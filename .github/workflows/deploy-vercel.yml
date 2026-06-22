@@ -78,7 +78,12 @@ jobs:
 
       - name: Build
         working-directory: backend
-        run: vercel build --token="$VERCEL_TOKEN"
+        run: |
+          if [ "${GITHUB_REF_NAME}" = "production" ] || [ "${GITHUB_REF_NAME}" = "development" ]; then
+            vercel build --prod --token="$VERCEL_TOKEN"
+          else
+            vercel build --token="$VERCEL_TOKEN"
+          fi
 
       - name: Deploy
         working-directory: backend
