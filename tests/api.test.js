@@ -49,11 +49,15 @@ test("backend upserts and reads submissions", async (t) => {
   assert.equal(first.status, 200);
   assert.equal(first.body.success, true);
   assert.equal(first.body.isReplace, false);
+  assert.ok(first.headers["x-correlation-id"]);
 
-  const read = await request(app).get("/api/submissions/MC/35.1");
+  const read = await request(app)
+    .get("/api/submissions/MC/35.1")
+    .set("x-correlation-id", "test-corr-id");
   assert.equal(read.status, 200);
   assert.equal(read.body.found, true);
   assert.equal(read.body.record.Team, "McLaren");
+  assert.equal(read.headers["x-correlation-id"], "test-corr-id");
 
   const second = await request(app)
     .post("/api/submissions/upsert")

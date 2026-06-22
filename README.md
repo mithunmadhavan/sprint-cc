@@ -3,7 +3,7 @@
 This project now uses a **separate backend service** for persistence:
 
 - Frontend: `index.html` (UI design unchanged)
-- Backend: `backend/` (Node.js + Express + MongoDB)
+- Backend: root-level Node.js service (Express + MongoDB)
 
 ## 1) Local setup (first roadmap step)
 
@@ -12,14 +12,13 @@ This project now uses a **separate backend service** for persistence:
 1. Copy env template:
 
 ```bash
-cp backend/.env.example backend/.env
+cp .env.example .env
 ```
 
-2. Update `backend/.env` with your Mongo URI.
+2. Update `.env` with your Mongo URI.
 3. Install deps and run backend:
 
 ```bash
-cd backend
 npm install
 npm start
 ```
@@ -43,7 +42,21 @@ When deployed, `index.html` calls same-origin APIs (`/api/*`) automatically.
 - `GET /api/submissions/:teamKey/:sprintNo`
 - `POST /api/submissions/upsert`
 
-## 3) GitHub Actions + Vercel deployment
+## 3) Backend layering and logs
+
+- `server.js`: runtime bootstrap
+- `src/app.js`: express app setup
+- `src/routes/apiRoutes.js`: route registration
+- `src/controllers/submissionController.js`: controller handlers
+- `src/services/submissionService.js`: service/data logic
+- `src/utils/*`: shared logger and helpers
+- `src/middleware/requestLogger.js`: logs every API call
+- `src/middleware/correlationId.js`: assigns or propagates correlation IDs
+
+API logs are JSON lines and include `correlationId`, method, path, status, and duration.
+Responses include `X-Correlation-Id`, and clients can pass `x-correlation-id`.
+
+## 4) GitHub Actions + Vercel deployment
 
 Workflow: `.github/workflows/deploy-vercel.yml`
 
@@ -53,9 +66,9 @@ Behavior:
 - Creates backend `.env` during CI with:
   - `PORT=3000`
   - `MONGO_URI` from GitHub Environment Variable (`vars.MONGO_URI`) or fallback secret (`secrets.MONGO_URI`)
-- Deploys backend from `backend/` to Vercel
+- Deploys backend from repository root to Vercel
 
-## 4) Secrets to add in GitHub
+## 5) Secrets to add in GitHub
 
 Add these in each GitHub Environment (for example `development`, `staging`, `production`):
 
@@ -64,10 +77,9 @@ Add these in each GitHub Environment (for example `development`, `staging`, `pro
 - Secret: `VERCEL_ORG_ID`
 - Secret: `VERCEL_PROJECT_ID`
 
-## 5) Optional test run
+## 6) Optional test run
 
 ```bash
-cd backend
 npm test
 ```
 
