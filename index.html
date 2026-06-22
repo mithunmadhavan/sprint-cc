@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sprint Capacity Collector</title>
+
+<!-- SheetJS for Excel export (Admin only) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<style>
+:root {
+  --ink:#1a2230; --ink-soft:#4a5568; --paper:#f7f8fa; --card:#ffffff;
+  --line:#e2e5eb; --accent:#c4501f; --accent-soft:#fbe9e1;
+  --green:#1f6f4f; --green-soft:#e3f3ec;
+  --blue:#1d4ed8;  --warn:#b45309; --warn-soft:#fef3e0;
+  --admin:#6d28d9; --admin-soft:#f1eafe;
+  --mono:'SF Mono','Roboto Mono',Consolas,monospace;
+}
+*{box-sizing:border-box;}
+body{margin:0;font-family:-apple-system,'Segoe UI',Inter,Arial,sans-serif;background:var(--paper);color:var(--ink);-webkit-font-smoothing:antialiased;}
+.wrap{max-width:1180px;margin:0 auto;padding:28px 24px 80px;}
+
+/* ── Login gate ── */
+#loginGate{position:fixed;inset:0;background:var(--ink);display:flex;align-items:center;justify-content:center;z-index:999;}
+.login-card{background:#fff;border-radius:14px;padding:40px 44px;width:390px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.4);}
+.login-card h2{font-size:19px;margin:18px 0 6px;}
+.login-card p{font-size:13px;color:var(--ink-soft);margin:0 0 24px;line-height:1.5;}
+.login-btn{width:100%;background:#fff;border:1.5px solid #8c8c8c;border-radius:4px;padding:11px 14px;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;color:#5e5e5e;font-family:'Segoe UI',sans-serif;}
+.login-btn:hover{background:#f3f3f3;}
+.login-domain-note{margin-top:18px;font-size:11px;color:#9aa1ad;font-family:var(--mono);background:var(--paper);border-radius:6px;padding:8px 10px;text-align:left;}
+.login-error{color:#c0392b;font-size:12px;margin-top:12px;display:none;}
+
+/* ── User bar ── */
+.userbar{display:flex;justify-content:flex-end;align-items:center;gap:10px;margin-bottom:14px;font-size:12.5px;color:var(--ink-soft);}
+.userbar .who{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);border-radius:20px;padding:5px 14px 5px 6px;}
+.avatar{width:22px;height:22px;border-radius:50%;background:var(--ink);color:#fff;font-size:10.5px;font-weight:700;display:flex;align-items:center;justify-content:center;}
+.role-pill{font-family:var(--mono);font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;letter-spacing:.04em;}
+.role-pill.admin{background:var(--admin-soft);color:var(--admin);}
+.role-pill.normal{background:#e7eaf0;color:var(--ink-soft);}
+.signout-link{font-size:12px;color:var(--ink-soft);text-decoration:underline;cursor:pointer;background:none;border:none;}
+
+/* ── Header ── */
+.head{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid var(--ink);padding-bottom:16px;margin-bottom:22px;flex-wrap:wrap;gap:12px;}
+.head h1{font-size:26px;margin:0 0 4px;letter-spacing:-.02em;font-weight:800;}
+.head .sub{color:var(--ink-soft);font-size:13.5px;margin:0;}
+.head .flag{font-family:var(--mono);font-size:11px;color:var(--accent);background:var(--accent-soft);border:1px solid #f0c9b5;border-radius:4px;padding:5px 10px;font-weight:700;letter-spacing:.04em;}
+
+/* ── Step bar ── */
+.stepbar{display:flex;margin-bottom:24px;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--card);}
+.step{flex:1;padding:12px 16px;font-size:12.5px;color:var(--ink-soft);border-right:1px solid var(--line);}
+.step:last-child{border-right:none;}
+.step.active{background:var(--ink);color:#fff;}
+.step .n{font-family:var(--mono);font-weight:700;margin-right:6px;opacity:.6;}
+
+/* ── Card ── */
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:22px 24px;margin-bottom:20px;}
+.card h2{font-size:15px;text-transform:uppercase;letter-spacing:.06em;margin:0 0 16px;color:var(--ink);display:flex;align-items:center;gap:8px;justify-content:space-between;}
+.card h2 .titlewrap{display:flex;align-items:center;gap:8px;}
+.card h2 .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);}
+.admin-badge{font-family:var(--mono);font-size:10px;font-weight:700;color:var(--admin);background:var(--admin-soft);padding:3px 9px;border-radius:10px;letter-spacing:.03em;text-transform:none;}
+
+/* ── Form controls ── */
+.selgrid{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+@media(max-width:720px){.selgrid{grid-template-columns:1fr;}}
+label{display:block;font-size:12px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;}
+select,input[type=text],input[type=number],textarea{width:100%;padding:10px 12px;font-size:14.5px;border:1.5px solid var(--line);border-radius:7px;background:#fff;color:var(--ink);font-family:inherit;}
+select:focus,input:focus,textarea:focus{outline:none;border-color:var(--ink);}
+select:disabled,input:disabled{background:#f1f2f4;color:#9aa1ad;cursor:not-allowed;}
+
+/* ── Readout tiles ── */
+.readout{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:18px;}
+@media(max-width:720px){.readout{grid-template-columns:1fr 1fr;}}
+.ro-box{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:12px 14px;}
+.ro-box .k{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft);margin-bottom:4px;}
+.ro-box .v{font-family:var(--mono);font-size:15px;font-weight:700;color:var(--ink);}
+.ro-box.pi .v{color:var(--blue);}
+.ro-box.range .v{font-size:13px;}
+
+/* ── Roster table ── */
+.tbl-scroll{overflow-x:auto;border:1px solid var(--line);border-radius:10px;}
+table{border-collapse:collapse;width:100%;min-width:1000px;font-size:13px;}
+thead tr.grp th{background:var(--ink);color:#fff;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;padding:8px 10px;text-align:center;font-weight:700;}
+thead tr.sub th{background:#2b3344;color:#d7dbe2;font-size:10.5px;padding:7px 10px;text-align:center;font-weight:600;border-top:1px solid #3c4458;}
+tbody td{padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:middle;}
+tbody tr:nth-child(even){background:#fafbfc;}
+tbody tr.role-architect,tbody tr.role-scrummaster,tbody tr.role-productowner{background:#f3f1fb;}
+td input[type=number]{width:56px;padding:5px 6px;text-align:center;font-family:var(--mono);font-size:13px;}
+td input[type=text]{font-size:12px;padding:5px 8px;min-width:160px;}
+td.pct select{font-family:var(--mono);font-size:13px;padding:5px 6px;}
+td.avail{font-family:var(--mono);font-weight:800;text-align:center;background:#f0fdf6;color:var(--green);}
+.ic-btn{border:1px solid var(--line);background:#fff;border-radius:5px;width:24px;height:24px;cursor:pointer;font-size:13px;color:var(--ink-soft);line-height:1;}
+.ic-btn:hover{border-color:#c0392b;color:#c0392b;}
+.addrow-bar{padding:10px 14px;border-top:1px solid var(--line);background:var(--paper);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;}
+.addrow-bar button.add{border:1.5px dashed var(--ink-soft);background:transparent;border-radius:7px;padding:8px 14px;font-size:12.5px;font-weight:700;color:var(--ink-soft);cursor:pointer;}
+.addrow-bar button.add:hover{border-color:var(--accent);color:var(--accent);}
+.export-btn{border:1.5px solid var(--admin);background:var(--admin-soft);border-radius:7px;padding:8px 14px;font-size:12.5px;font-weight:700;color:var(--admin);cursor:pointer;display:flex;align-items:center;gap:6px;}
+.export-btn:hover{background:var(--admin);color:#fff;}
+.normal-note{font-size:11.5px;color:var(--warn);background:var(--warn-soft);border:1px solid #f3d99a;border-radius:7px;padding:8px 12px;margin-bottom:14px;}
+
+/* ── KPIs ── */
+.kpi-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;}
+@media(max-width:980px){.kpi-grid{grid-template-columns:repeat(2,1fr);}}
+.kpi{border-radius:10px;padding:16px;border:1px solid var(--line);background:var(--paper);}
+.kpi .label{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft);font-weight:700;margin-bottom:6px;}
+.kpi .value{font-family:var(--mono);font-size:26px;font-weight:800;color:var(--ink);}
+.kpi .foot{font-size:11px;color:var(--ink-soft);margin-top:4px;}
+.kpi.team-size{border-left:4px solid var(--blue);}
+.kpi.total-days{border-left:4px solid #555;}
+.kpi.overhead{border-left:4px solid var(--warn);background:var(--warn-soft);}
+.kpi.sprint-cap{border-left:4px solid var(--green);background:var(--green-soft);}
+.kpi.sprint-cap .value{color:var(--green);font-size:30px;}
+.kpi.bifurcation{border-left:4px solid var(--accent);}
+.bif-bar{display:flex;height:10px;border-radius:5px;overflow:hidden;margin-top:8px;background:#eee;}
+.bif-bar .dev{background:var(--blue);}
+.bif-bar .tst{background:var(--accent);}
+.bif-legend{display:flex;gap:14px;margin-top:8px;font-size:11px;}
+.bif-legend span{display:flex;align-items:center;gap:5px;}
+.bif-legend i{width:9px;height:9px;border-radius:2px;display:inline-block;}
+
+/* ── Submit area ── */
+textarea{min-height:70px;resize:vertical;font-size:13.5px;}
+.submit-row{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;margin-top:6px;}
+.meta-line{font-family:var(--mono);font-size:12px;color:var(--ink-soft);}
+.submit-btn{background:var(--ink);color:#fff;border:none;border-radius:8px;padding:13px 28px;font-size:14.5px;font-weight:700;cursor:pointer;}
+.submit-btn:hover{background:#000;}
+.submit-btn:disabled{background:#aab0bb;cursor:not-allowed;}
+.status-msg{font-size:13px;padding:10px 14px;border-radius:7px;margin-top:12px;display:none;}
+.status-msg.ok{display:block;background:var(--green-soft);color:var(--green);border:1px solid #b9e3cd;}
+.status-msg.replace{display:block;background:#fff7ed;color:var(--warn);border:1px solid #f3d99a;}
+.status-msg.err{display:block;background:#fef2f2;color:#b91c1c;border:1px solid #fca5a5;}
+
+/* ── Loading overlay ── */
+#loadingOverlay{display:none;position:fixed;inset:0;background:rgba(26,34,48,.55);z-index:888;align-items:center;justify-content:center;}
+#loadingOverlay.show{display:flex;}
+.spinner{width:44px;height:44px;border:4px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.loading-label{color:#fff;font-size:13px;margin-top:12px;font-family:var(--mono);}
+
+.legend-note{font-size:11.5px;color:var(--ink-soft);margin-top:10px;line-height:1.5;}
+code{background:#eef0f3;padding:1px 5px;border-radius:4px;font-family:var(--mono);font-size:11px;}
+.history-strip{font-size:11.5px;color:var(--ink-soft);margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);}
+.config-warn{background:#fff7ed;border:1px solid #fcd34d;border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:12.5px;color:#92400e;display:none;}
+.config-warn b{color:#78350f;}
+
+/* ── All Submissions Grid ── */
+.all-submissions-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-top:16px;}
+.submission-card{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:14px;font-size:12px;}
+.submission-card h3{margin:0 0 10px;font-size:13px;font-weight:700;color:var(--ink);}
+.submission-row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--line);}
+.submission-row:last-child{border-bottom:none;}
+.submission-label{color:var(--ink-soft);font-weight:600;}
+.submission-value{color:var(--ink);font-family:var(--mono);font-weight:700;}
+
+/* ── Connectivity indicator ── */
+.conn-status{position:fixed;left:12px;top:12px;z-index:1001;font-family:var(--mono);font-size:11px;font-weight:700;border-radius:999px;padding:6px 10px;border:1px solid var(--line);background:#eef0f3;color:var(--ink-soft);}
+.conn-status.online{background:var(--green-soft);color:var(--green);border-color:#b9e3cd;}
+.conn-status.offline{background:#fef2f2;color:#b91c1c;border-color:#fca5a5;}
+</style>
+</head>
+<body>
+
+<div id="connStatus" class="conn-status">Backend: checking...</div>
+
+<!-- Loading overlay -->
+<div id="loadingOverlay">
+  <div style="text-align:center;">
+    <div class="spinner"></div>
+    <div class="loading-label" id="loadingLabel">Loading...</div>
+  </div>
+</div>
+
+<!-- Login gate -->
+<div id="loginGate">
+  <div class="login-card">
+    <svg viewBox="0 0 23 23" xmlns="http://www.w3.org/2000/svg" style="width:38px;height:38px;">
+      <rect x="1" y="1" width="10" height="10" fill="#f25022"/>
+      <rect x="12" y="1" width="10" height="10" fill="#7fba00"/>
+      <rect x="1" y="12" width="10" height="10" fill="#00a4ef"/>
+      <rect x="12" y="12" width="10" height="10" fill="#ffb900"/>
+    </svg>
+    <h2>Sprint Capacity Collector</h2>
+    <p>Sign in with your Etihad company account. Role (Admin / Normal) is resolved automatically from your Azure AD group.</p>
+    <button class="login-btn" id="ssoLoginBtn">
+      <svg width="16" height="16" viewBox="0 0 23 23"><rect x="1" y="1" width="10" height="10" fill="#f25022"/><rect x="12" y="1" width="10" height="10" fill="#7fba00"/><rect x="1" y="12" width="10" height="10" fill="#00a4ef"/><rect x="12" y="12" width="10" height="10" fill="#ffb900"/></svg>
+      Sign in with Microsoft
+    </button>
+    <div class="login-error" id="loginError">Sign-in failed. Please use your @etihad.ae company account.</div>
+    <div class="login-domain-note">tenant: etihad.ae &nbsp;|&nbsp; Entra ID OIDC / MSAL.js</div>
+  </div>
+</div>
+
+<!-- Main app -->
+<div class="wrap" id="appWrap" style="display:none;">
+
+  <!-- Config warning -->
+  <div class="config-warn" id="configWarn">
+
+  </div>
+
+  <div class="userbar">
+    <div class="who">
+      <div class="avatar" id="userAvatar">--</div>
+      <span id="userDisplayName">—</span>
+      <span class="role-pill" id="roleBadge">—</span>
+    </div>
+    <button class="signout-link" id="signOutBtn">Sign out</button>
+  </div>
+
+  <div class="head">
+    <div>
+      <h1>Sprint Capacity Collector</h1>
+      <p class="sub">Acquire-to-Pay Agile Release Train — team capacity submission</p>
+    </div>
+    <div class="flag" id="windowFlag">SELECTION WINDOW</div>
+  </div>
+
+  <div class="stepbar">
+    <div class="step active"><span class="n">01</span>Select team &amp; sprint</div>
+    <div class="step active"><span class="n">02</span>Enter roster availability</div>
+    <div class="step active"><span class="n">03</span>Review &amp; submit</div>
+  </div>
+
+  <!-- Step 1: Team & Sprint -->
+  <div class="card">
+    <h2><span class="titlewrap"><span class="dot"></span>Team &amp; Sprint</span></h2>
+    <div class="selgrid">
+      <div>
+        <label for="teamSel">Team</label>
+        <select id="teamSel"><option value="">— Select team —</option></select>
+      </div>
+      <div>
+        <label for="sprintSel">Sprint</label>
+        <select id="sprintSel"><option value="">— Select sprint —</option></select>
+      </div>
+    </div>
+    <div class="readout">
+      <div class="ro-box pi"><div class="k">PI</div><div class="v" id="roPI">—</div></div>
+      <div class="ro-box range"><div class="k">Sprint Start</div><div class="v" id="roStart">—</div></div>
+      <div class="ro-box range"><div class="k">Sprint End</div><div class="v" id="roEnd">—</div></div>
+      <div class="ro-box"><div class="k">Submitted Date</div><div class="v" id="roToday">—</div></div>
+    </div>
+    <p class="legend-note">Sprint shows the window currently open today. Dates and PI fill automatically.</p>
+    <div class="history-strip" id="historyStrip" style="display:none;"></div>
+  </div>
+
+  <!-- Step 2: Roster -->
+  <div class="card">
+    <h2>
+      <span class="titlewrap"><span class="dot"></span>Team Roster &amp; Availability</span>
+      <span class="admin-badge" id="adminEditBadge" style="display:none;">Full edit — Admin</span>
+    </h2>
+    <div class="normal-note" id="normalNote" style="display:none;">
+      You're signed in as a <b>Normal</b> user. You can add team members and edit details. Admins can manage exports and view all team submissions.
+    </div>
+    <div class="tbl-scroll">
+      <table id="rosterTable">
+        <thead>
+          <tr class="grp">
+            <th rowspan="2">Name</th><th rowspan="2">Main Role</th>
+            <th colspan="3">Leave (Days)</th>
+            <th rowspan="2">% Time on Project</th><th rowspan="2">Available Days</th>
+            <th rowspan="2">Notes</th><th rowspan="2"></th>
+          </tr>
+          <tr class="sub"><th>Public Holiday</th><th>Annual Leave</th><th>Other</th></tr>
+        </thead>
+        <tbody id="rosterBody"></tbody>
+      </table>
+      <div class="addrow-bar">
+        <button class="add" id="addRowBtn" type="button">+ Add team member</button>
+        <button class="export-btn" id="exportBtn" type="button" style="display:none;">⬇ Download All Teams Excel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ALL TEAMS VIEW (Admin only) -->
+  <div class="card" id="allTeamsCard" style="display:none;">
+    <h2><span class="titlewrap"><span class="dot"></span>All Teams Submissions</span></h2>
+    <p class="legend-note">Showing all capacity submissions from all teams.</p>
+    <div class="all-submissions-grid" id="allTeamsContainer"></div>
+  </div>
+
+  <!-- KPI dashboard -->
+  <div class="card">
+    <h2><span class="titlewrap"><span class="dot"></span>Automated Capacity KPIs</span></h2>
+    <div class="kpi-grid">
+      <div class="kpi team-size">
+        <div class="label">Team Size</div><div class="value" id="kpiTeamSize">0</div>
+        <div class="foot">Excludes Architect, Scrum Master, PO</div>
+      </div>
+      <div class="kpi total-days">
+        <div class="label">Total Days</div><div class="value" id="kpiTotalDays">0</div>
+        <div class="foot">Sum of Available Days</div>
+      </div>
+      <div class="kpi overhead">
+        <div class="label">Sprint Overhead / BAU</div><div class="value" id="kpiOverhead">0.0</div>
+        <div class="foot">20% of Total Days</div>
+      </div>
+      <div class="kpi sprint-cap">
+        <div class="label">Sprint Capacity</div><div class="value" id="kpiSprintCap">0.0</div>
+        <div class="foot">Total Days − Overhead</div>
+      </div>
+      <div class="kpi bifurcation">
+        <div class="label">Dev / Test Bifurcation</div><div class="value" id="kpiBifText" style="font-size:16px;">—</div>
+        <div class="bif-bar"><div class="dev" id="bifDevBar" style="width:0%"></div><div class="tst" id="bifTestBar" style="width:0%"></div></div>
+        <div class="bif-legend">
+          <span><i style="background:var(--blue)"></i>Dev <b id="bifDevPct">0%</b></span>
+          <span><i style="background:var(--accent)"></i>Test <b id="bifTestPct">0%</b></span>
+        </div>
+      </div>
+    </div>
+    <p class="legend-note"><b>Team size</b> excludes Architect/Scrum Master/PO. <b>Overhead</b> = 20% of total days. <b>Bifurcation</b> splits Dev vs Test days.</p>
+  </div>
+
+  <!-- Submit -->
+  <div class="card">
+    <h2><span class="titlewrap"><span class="dot"></span>Submission Notes</span></h2>
+    <textarea id="submissionNotes" placeholder="Any overall notes about this sprint's capacity submission (optional)..."></textarea>
+    <div class="submit-row">
+      <div class="meta-line">Submitted by: <b id="metaUser">—</b> &nbsp;|&nbsp; Date: <b id="metaDate">—</b></div>
+      <button class="submit-btn" id="submitBtn">Submit Capacity</button>
+    </div>
+    <div class="status-msg" id="statusMsg"></div>
+  </div>
+
+</div><!-- /appWrap -->
+
+<script>
+const CONFIG = {
+  MOCK_MODE: true,
+  MSAL_CLIENT_ID: "YOUR_APP_CLIENT_ID",
+  MSAL_TENANT_ID: "YOUR_TENANT_ID",
+  REDIRECT_URI: "https://eystaticwebsite.z1.web.core.windows.net/sprintcapacity.html",
+  DOMAIN_HINT: "etihad.ae",
+  ADMIN_GROUP_ID: "YOUR_ADMIN_GROUP_OBJECT_ID",
+  API_BASE_URL: "http://localhost:3000",
+};
+
+const API_BASE = CONFIG.API_BASE_URL.replace(/\/$/, "");
+
+const TEAMS = [
+  { name:"McLaren",      key:"MC"   },
+  { name:"Cadillac",     key:"CAD"  },
+  { name:"BMW",          key:"BMW"  },
+  { name:"Aston Martin", key:"AS"   },
+  { name:"Haas",         key:"HAAS" },
+  { name:"Mercedes",     key:"DMA"  },
+  { name:"Kick Sauber",  key:"SAUB" },
+  { name:"Williams",     key:"WIL"  },
+  { name:"Audi",         key:"AUDI" },
+  { name:"Ferrari",      key:"FER"  },
+  { name:"Renault",      key:"REN"  }
+];
+
+const SPRINT_CALENDAR = [
+  { sprint:"35.1",  pi:"35", start:"2026-07-08", end:"2026-07-21" },
+  { sprint:"35.2",  pi:"35", start:"2026-07-22", end:"2026-08-04" },
+  { sprint:"35.3",  pi:"35", start:"2026-08-05", end:"2026-08-18" },
+  { sprint:"35.4",  pi:"35", start:"2026-08-19", end:"2026-09-01" },
+  { sprint:"35.5",  pi:"35", start:"2026-09-02", end:"2026-09-15" },
+  { sprint:"35.IP", pi:"35", start:"2026-09-16", end:"2026-09-29" },
+  { sprint:"36.1",  pi:"36", start:"2026-09-30", end:"2026-10-13" },
+  { sprint:"36.2",  pi:"36", start:"2026-10-14", end:"2026-10-27" },
+  { sprint:"36.3",  pi:"36", start:"2026-10-28", end:"2026-11-10" },
+  { sprint:"36.4",  pi:"36", start:"2026-11-11", end:"2026-11-24" },
+  { sprint:"36.5",  pi:"36", start:"2026-11-25", end:"2026-12-08" },
+  { sprint:"36.IP", pi:"36", start:"2026-12-09", end:"2026-12-22" }
+];
+
+const ROLES = ["Full Stack Dev","Front End Dev","Back End Dev","Tester","Architect","Scrum Master","Product Owner"];
+const NON_TEAM_ROLES = ["Architect","Scrum Master","Product Owner"];
+const SPRINT_LEN = 10;
+
+const DEFAULT_ROSTER = [
+];
+
+let CURRENT_USER = null;
+let rosterRows = JSON.parse(JSON.stringify(DEFAULT_ROSTER));
+const TODAY = new Date().toISOString().slice(0,10);
+const CONNECTIVITY_MS = { online: 5000, offline: 30000 };
+let connTimer = null;
+
+function todayISO() { return new Date().toISOString().slice(0,10); }
+function fmtDate(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso + "T00:00:00");
+  return d.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});
+}
+
+function showLoading(msg) {
+  document.getElementById("loadingLabel").textContent = msg || "Loading…"; 
+  document.getElementById("loadingOverlay").classList.add("show"); 
+}
+function hideLoading() { document.getElementById("loadingOverlay").classList.remove("show"); }
+
+function setConnectivityState(isOnline) {
+  const el = document.getElementById("connStatus");
+  if (!el) return;
+  el.classList.remove("online", "offline");
+  el.classList.add(isOnline ? "online" : "offline");
+  el.textContent = `Backend: ${isOnline ? "online" : "offline"}`;
+}
+
+function scheduleConnectivityCheck(isOnline) {
+  clearTimeout(connTimer);
+  connTimer = setTimeout(checkBackendConnectivity, isOnline ? CONNECTIVITY_MS.online : CONNECTIVITY_MS.offline);
+}
+
+async function checkBackendConnectivity() {
+  let isOnline = false;
+  try {
+    const resp = await fetch(`${API_BASE}/api/health`, { cache: "no-store" });
+    if (resp.ok) {
+      const json = await resp.json();
+      isOnline = json.ok === true;
+    }
+  } catch (e) {
+    isOnline = false;
+  }
+  setConnectivityState(isOnline);
+  scheduleConnectivityCheck(isOnline);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   AUTH
+═══════════════════════════════════════════════════════════════════ */
+function mockSignIn() {
+  const email = prompt("MOCK SSO — enter your email (@etihad.ae):", "firstname.lastname@etihad.ae");
+  if (!email) return null;
+  if (!email.toLowerCase().endsWith("@" + CONFIG.DOMAIN_HINT)) {
+    document.getElementById("loginError").style.display = "block"; return null;
+  }
+  const isAdmin = email.toLowerCase().includes("admin") ||
+    confirm("MOCK SSO — grant Admin role?");
+  const name = email.split("@")[0].split(".").map(s => s.charAt(0).toUpperCase()+s.slice(1)).join(" ");
+  return { name, email, role: isAdmin ? "admin" : "normal" };
+}
+
+document.getElementById("ssoLoginBtn").addEventListener("click", () => {
+  document.getElementById("loginError").style.display = "none";
+  const user = mockSignIn();
+  if (!user) return;
+  CURRENT_USER = user;
+  sessionStorage.setItem("sc_user", JSON.stringify(user));
+  bootApp();
+});
+
+document.getElementById("signOutBtn").addEventListener("click", () => {
+  sessionStorage.removeItem("sc_user"); location.reload();
+});
+
+(function tryResume() {
+  const c = sessionStorage.getItem("sc_user");
+  if (c) { CURRENT_USER = JSON.parse(c); bootApp(); }
+})();
+
+/* ═══════════════════════════════════════════════════════════════════
+   BOOT
+═══════════════════════════════════════════════════════════════════ */
+function bootApp() {
+  document.getElementById("loginGate").style.display  = "none";
+  document.getElementById("appWrap").style.display    = "block";
+
+  const initials = CURRENT_USER.name.split(" ").map(s=>s[0]).slice(0,2).join("").toUpperCase();
+  document.getElementById("userAvatar").textContent      = initials;
+  document.getElementById("userDisplayName").textContent = `${CURRENT_USER.name} (${CURRENT_USER.email})`;
+  const pill = document.getElementById("roleBadge");
+  pill.textContent = CURRENT_USER.role.toUpperCase();
+  pill.className   = "role-pill " + CURRENT_USER.role;
+  document.getElementById("metaUser").textContent = `${CURRENT_USER.name} (${CURRENT_USER.email})`;
+  document.getElementById("roToday").textContent  = fmtDate(TODAY);
+  document.getElementById("metaDate").textContent = fmtDate(TODAY);
+
+  const isAdmin = CURRENT_USER.role === "admin";
+  document.getElementById("addRowBtn").style.display    = "inline-block";
+  document.getElementById("exportBtn").style.display    = isAdmin ? "inline-flex"  : "none";
+  document.getElementById("adminEditBadge").style.display = isAdmin ? "inline-block" : "none";
+  document.getElementById("normalNote").style.display   = isAdmin ? "none" : "block";
+  document.getElementById("allTeamsCard").style.display = isAdmin ? "block" : "none";
+
+  initTeamDropdown();
+  populateSprintDropdown();
+  updateReadout();
+  renderRoster();
+  if (isAdmin) renderAllTeams();
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   DROPDOWNS
+═══════════════════════════════════════════════════════════════════ */
+function initTeamDropdown() {
+  const sel = document.getElementById("teamSel");
+  sel.innerHTML = '<option value="">— Select team —</option>';
+  TEAMS.forEach(t => { const o = new Option(t.name, t.key); sel.appendChild(o); });
+  sel.addEventListener("change", onTeamSprintChange);
+}
+
+function populateSprintDropdown() {
+  const sel   = document.getElementById("sprintSel");
+  const flag  = document.getElementById("windowFlag");
+  const open  = SPRINT_CALENDAR.filter(s => TODAY >= s.start && TODAY <= s.end);
+  sel.innerHTML = '<option value="">— Select sprint —</option>';
+  if (open.length === 0) {
+    const nxt = SPRINT_CALENDAR.filter(s => s.start > TODAY).sort((a,b)=>a.start.localeCompare(b.start));
+    const list = nxt.length ? [nxt[0]] : SPRINT_CALENDAR.slice(-1);
+    list.forEach(s => sel.appendChild(new Option(`${s.sprint}  (opens ${fmtDate(s.start)})`, s.sprint)));
+    flag.textContent = "NO WINDOW OPEN — SHOWING NEXT SPRINT";
+    Object.assign(flag.style,{color:"#b45309",background:"#fef3e0",borderColor:"#f3d99a"});
+  } else {
+    open.forEach(s => sel.appendChild(new Option(`${s.sprint}  (${fmtDate(s.start)} – ${fmtDate(s.end)})`, s.sprint)));
+    flag.textContent = `SELECTION WINDOW OPEN — ${open.length} SPRINT${open.length>1?"S":""}`;
+    Object.assign(flag.style,{color:"#1f6f4f",background:"#e3f3ec",borderColor:"#b9e3cd"});
+  }
+  sel.addEventListener("change", onTeamSprintChange);
+}
+
+function updateReadout() {
+  const v    = document.getElementById("sprintSel").value;
+  const info = SPRINT_CALENDAR.find(s => s.sprint === v);
+  document.getElementById("roPI").textContent    = info ? `PI ${info.pi}` : "—";
+  document.getElementById("roStart").textContent = info ? fmtDate(info.start) : "—";
+  document.getElementById("roEnd").textContent   = info ? fmtDate(info.end)   : "—";
+}
+
+async function onTeamSprintChange() {
+  updateReadout();
+  const teamKey   = document.getElementById("teamSel").value;
+  const sprintVal = document.getElementById("sprintSel").value;
+  const strip     = document.getElementById("historyStrip");
+
+  if (!teamKey || !sprintVal) { strip.style.display = "none"; return; }
+
+  const rec = await spRead(teamKey, sprintVal);
+
+  if (rec) {
+    strip.style.display  = "block";
+    strip.innerHTML = `⟳ Existing record found for <b>${TEAMS.find(t=>t.key===teamKey)?.name}</b> Sprint <b>${sprintVal}</b> — saved by <b>${rec.submittedBy || rec.SubmittedBy}</b> on <b>${fmtDate(rec.submittedDate || rec.SubmittedDate)}</b>. Submitting will replace this record.`;
+    if (rec.Roster && Array.isArray(rec.Roster)) {
+      rosterRows = JSON.parse(JSON.stringify(rec.Roster));
+    }
+    if (rec.Notes || rec.SprintNotes) {
+      document.getElementById("submissionNotes").value = rec.Notes || rec.SprintNotes || "";
+    }
+  } else {
+    strip.style.display  = "block";
+    strip.innerHTML = `No existing submission found for this Team + Sprint — submitting will create a new record.`;
+    rosterRows = JSON.parse(JSON.stringify(DEFAULT_ROSTER));
+    document.getElementById("submissionNotes").value = "";
+  }
+  renderRoster();
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   API FUNCTIONS
+═══════════════════════════════════════════════════════════════════ */
+async function apiJson(path, options) {
+  const resp = await fetch(`${API_BASE}${path}`, options);
+  if (!resp.ok) {
+    let msg = `HTTP ${resp.status}`;
+    try {
+      const err = await resp.json();
+      msg = err.error || msg;
+    } catch (e) {}
+    throw new Error(msg);
+  }
+  return resp.json();
+}
+
+async function spRead(teamKey, sprintNo) {
+  try {
+    showLoading("Loading existing data from backend…");
+    const json = await apiJson(`/api/submissions/${encodeURIComponent(teamKey)}/${encodeURIComponent(sprintNo)}`);
+    hideLoading();
+    if (json.found && json.record) {
+      return json.record;
+    }
+    return null;
+  } catch(e) {
+    hideLoading();
+    return null;
+  }
+}
+
+async function spUpsert(payload) {
+  try {
+    showLoading("Saving to backend…");
+    const json = await apiJson("/api/submissions/upsert", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    hideLoading();
+    return json;
+  } catch(e) {
+    hideLoading();
+    return { success: false, error: String(e) };
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   ROSTER TABLE
+═══════════════════════════════════════════════════════════════════ */
+function roleSlug(r) { return r.toLowerCase().replace(/\s+/g,""); }
+function availDays(row) {
+  const leave = (Number(row.ph)||0) + (Number(row.al)||0) + (Number(row.other)||0);
+  return Math.max(0, Math.round(((SPRINT_LEN * (Number(row.pct)||0) / 100) - leave) * 10) / 10);
+}
+
+function renderRoster() {
+  const isAdmin = CURRENT_USER?.role === "admin";
+  const body    = document.getElementById("rosterBody");
+  body.innerHTML = "";
+
+  rosterRows.forEach((row, idx) => {
+    const avail = availDays(row);
+    row._avail  = avail;
+    const tr    = document.createElement("tr");
+    tr.className = "role-" + roleSlug(row.role);
+
+    tr.innerHTML = `
+      <td><input type="text"   data-f="name"  data-i="${idx}" value="${esc(row.name)}"  style="font-weight:700;border:none;background:transparent;padding:4px;width:160px;"></td>
+      <td><select data-f="role" data-i="${idx}">${ROLES.map(r=>`<option value="${r}" ${r===row.role?"selected":""}>${r}</option>`).join("")}</select></td>
+      <td><input type="number" data-f="ph"    data-i="${idx}" value="${row.ph}"    min="0" step="0.5"></td>
+      <td><input type="number" data-f="al"    data-i="${idx}" value="${row.al}"    min="0" step="0.5"></td>
+      <td><input type="number" data-f="other" data-i="${idx}" value="${row.other}" min="0" step="0.5"></td>
+      <td class="pct"><select data-f="pct" data-i="${idx}" ${!isAdmin?"disabled":""}>${[100,75,50,25,0].map(p=>`<option value="${p}" ${p===Number(row.pct)?"selected":""}>${p}%</option>`).join("")}</select></td>
+      <td class="avail">${avail}</td>
+      <td><input type="text" data-f="notes" data-i="${idx}" value="${esc(row.notes)}" placeholder="—" ${!isAdmin?"disabled":""}></td>
+      <td>${isAdmin?`<button class="ic-btn" data-rm="${idx}" title="Remove">✕</button>`:""}</td>`;
+    body.appendChild(tr);
+  });
+
+  body.querySelectorAll("input,select").forEach(el => { el.addEventListener("input",  onField); el.addEventListener("change", onField); });
+  body.querySelectorAll("[data-rm]").forEach(btn => {
+    btn.addEventListener("click", () => { rosterRows.splice(+btn.dataset.rm, 1); renderRoster(); });
+  });
+  computeKPIs();
+}
+
+function esc(s) { return String(s||"").replace(/&/g,"&amp;").replace(/"/g,"&quot;"); }
+
+function onField(e) {
+  const idx = +e.target.dataset.i, f = e.target.dataset.f;
+  let v = e.target.value;
+  if (["ph","al","other","pct"].includes(f)) v = Number(v);
+  rosterRows[idx][f] = v;
+  if (["ph","al","other","pct"].includes(f)) {
+    const av = availDays(rosterRows[idx]);
+    rosterRows[idx]._avail = av;
+    e.target.closest("tr").querySelector(".avail").textContent = av;
+  }
+  if (f === "role") e.target.closest("tr").className = "role-" + roleSlug(v);
+  computeKPIs();
+}
+
+document.getElementById("addRowBtn").addEventListener("click", () => {
+  rosterRows.push({ name:"", role:"Full Stack Dev", ph:0, al:0, other:0, pct:100, notes:"" });
+  renderRoster();
+});
+
+/* ═══════════════════════════════════════════════════════════════════
+   KPI CALCULATIONS
+═══════════════════════════════════════════════════════════════════ */
+function computeKPIs() {
+  const teamSize   = rosterRows.filter(r => !NON_TEAM_ROLES.includes(r.role) && r.name.trim()).length;
+  const totalDays  = rosterRows.reduce((s,r) => s + availDays(r), 0);
+  const overhead   = totalDays * 0.20;
+  const sprintCap  = totalDays - overhead;
+  let devDays = 0, tstDays = 0;
+  rosterRows.forEach(r => {
+    const a = availDays(r), rl = r.role.toLowerCase();
+    if (rl.includes("dev"))  devDays += a;
+    else if (rl.includes("test")) tstDays += a;
+  });
+  const tot = devDays + tstDays;
+  const dp  = tot > 0 ? Math.round(devDays/tot*100) : 0;
+  const tp  = tot > 0 ? 100 - dp : 0;
+
+  document.getElementById("kpiTeamSize").textContent  = teamSize;
+  document.getElementById("kpiTotalDays").textContent = r1(totalDays);
+  document.getElementById("kpiOverhead").textContent  = r1(overhead);
+  document.getElementById("kpiSprintCap").textContent = r1(sprintCap);
+  document.getElementById("kpiBifText").textContent   = `Dev ${r1(devDays)}d · Test ${r1(tstDays)}d`;
+  document.getElementById("bifDevBar").style.width    = dp + "%";
+  document.getElementById("bifTestBar").style.width   = tp + "%";
+  document.getElementById("bifDevPct").textContent    = dp + "%";
+  document.getElementById("bifTestPct").textContent   = tp + "%";
+  return { teamSize, totalDays, overhead, sprintCap, devDays, tstDays, dp, tp };
+}
+function r1(n) { return Math.round(n * 10) / 10; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   RENDER ALL TEAMS (Admin only)
+═══════════════════════════════════════════════════════════════════ */
+function renderAllTeams() {
+  loadAllTeams();
+}
+
+async function fetchAllSubmissions() {
+  return apiJson("/api/submissions");
+}
+
+async function loadAllTeams() {
+  const container = document.getElementById("allTeamsContainer");
+  let submissions = [];
+  try {
+    submissions = await fetchAllSubmissions();
+  } catch (e) {
+    container.innerHTML = '<p style="color:#b91c1c;font-size:12px;grid-column:1/-1;">Unable to load submissions from backend.</p>';
+    return;
+  }
+
+  if (submissions.length === 0) {
+    container.innerHTML = '<p style="color:var(--ink-soft);font-size:12px;grid-column:1/-1;">No submissions yet. Teams will appear here once they submit data.</p>';
+    return;
+  }
+  
+  const html = submissions.map(s => `
+    <div class="submission-card">
+      <h3>${s.Team || s.name}</h3>
+      <div class="submission-row"><span class="submission-label">Sprint:</span><span class="submission-value">${s.SprintNo}</span></div>
+      <div class="submission-row"><span class="submission-label">Team Size:</span><span class="submission-value">${s.TeamSize}</span></div>
+      <div class="submission-row"><span class="submission-label">Capacity:</span><span class="submission-value">${r1(s.SprintCapacity)}d</span></div>
+      <div class="submission-row"><span class="submission-label">Dev:</span><span class="submission-value">${r1(s.DevCapacityDays)}d (${s.DevPercent}%)</span></div>
+      <div class="submission-row"><span class="submission-label">Test:</span><span class="submission-value">${r1(s.TestCapacityDays)}d (${s.TestPercent}%)</span></div>
+      <div class="submission-row"><span class="submission-label">Submitted:</span><span class="submission-value">${s.submittedDate}</span></div>
+    </div>
+  `).join('');
+  
+  container.innerHTML = html;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   EXPORT ALL TEAMS TO EXCEL (Admin only)
+═══════════════════════════════════════════════════════════════════ */
+document.getElementById("exportBtn").addEventListener("click", () => {
+  exportAllTeams();
+});
+
+async function exportAllTeams() {
+  if (CURRENT_USER?.role !== "admin") { alert("Admin only"); return; }
+
+  let submissions = [];
+  try {
+    submissions = await fetchAllSubmissions();
+  } catch (e) {
+    alert("Unable to load submissions from backend");
+    return;
+  }
+
+  if (submissions.length === 0) {
+    alert("No submissions to export");
+    return;
+  }
+
+  // Summary sheet - all teams
+  const summarySheet = submissions.map(s => ({
+    'Team': s.Team, 'Sprint': s.SprintNo, 'PI': s.PI,
+    'Team Size': s.TeamSize, 'Total Days': r1(s.TotalDays),
+    'Sprint Overhead': r1(s.SprintOverhead), 'Sprint Capacity': r1(s.SprintCapacity),
+    'Dev Days': r1(s.DevCapacityDays), 'Test Days': r1(s.TestCapacityDays),
+    'Dev %': s.DevPercent + '%', 'Test %': s.TestPercent + '%',
+    'Submitted By': s.submittedBy, 'Submitted Date': s.submittedDate
+  }));
+  
+  // Detailed roster sheet
+  const rosterSheet = [];
+  submissions.forEach(s => {
+    if (s.Roster && Array.isArray(s.Roster)) {
+      s.Roster.forEach(member => {
+        rosterSheet.push({
+          'Team': s.Team, 'Sprint': s.SprintNo,
+          'Name': member.name, 'Role': member.role,
+          'PH Days': member.ph, 'AL Days': member.al, 'Other Days': member.other,
+          '% on Project': member.pct, 'Available Days': availDays(member).toFixed(1),
+          'Notes': member.notes || ''
+        });
+      });
+    }
+  });
+  
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summarySheet), "All Teams Summary");
+  if (rosterSheet.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rosterSheet), "All Roster Details");
+  
+  XLSX.writeFile(wb, `SprintCapacity_AllTeams_${TODAY}.xlsx`);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   SUBMIT
+═══════════════════════════════════════════════════════════════════ */
+document.getElementById("submitBtn").addEventListener("click", async () => {
+  const teamKey   = document.getElementById("teamSel").value;
+  const sprintVal = document.getElementById("sprintSel").value;
+  const statusEl  = document.getElementById("statusMsg");
+  if (!teamKey || !sprintVal) { alert("Please select both Team and Sprint before submitting."); return; }
+
+  const teamObj   = TEAMS.find(t=>t.key===teamKey);
+  const sprintInf = SPRINT_CALENDAR.find(s=>s.sprint===sprintVal);
+  const kpis      = computeKPIs();
+
+  const payload = {
+    Team: teamObj.name, ProjectKey: teamObj.key, SprintNo: sprintVal,
+    PI: sprintInf?.pi || "", SprintStart: sprintInf?.start || "", SprintEnd: sprintInf?.end || "",
+    submittedDate: TODAY,
+    submittedBy:   `${CURRENT_USER.name} (${CURRENT_USER.email})`,
+    submittedRole: CURRENT_USER.role,
+    TeamSize:         kpis.teamSize,
+    TotalDays:        r1(kpis.totalDays),
+    SprintOverhead:   r1(kpis.overhead),
+    SprintCapacity:   r1(kpis.sprintCap),
+    DevCapacityDays:  r1(kpis.devDays),
+    TestCapacityDays: r1(kpis.tstDays),
+    DevPercent:       kpis.dp,
+    TestPercent:      kpis.tp,
+    Notes:            document.getElementById("submissionNotes").value,
+    Roster:           rosterRows.map(r => ({ ...r, AvailableDays: availDays(r) }))
+  };
+
+  document.getElementById("submitBtn").disabled = true;
+  const result = await spUpsert(payload);
+  document.getElementById("submitBtn").disabled = false;
+
+  if (result.success === false) {
+    statusEl.textContent = `❌ Save failed: ${result.error || "unknown error"}. Please try again.`;
+    statusEl.className   = "status-msg err";
+  } else {
+    statusEl.textContent = result.isReplace
+      ? `⟳ Record replaced — ${teamObj.name}, Sprint ${sprintVal}. Capacity: ${payload.SprintCapacity} days.`
+      : `✓ Submitted — ${teamObj.name}, Sprint ${sprintVal}. Capacity: ${payload.SprintCapacity} days.`;
+    statusEl.className = result.isReplace ? "status-msg replace" : "status-msg ok";
+    await onTeamSprintChange();
+    if (CURRENT_USER?.role === "admin") renderAllTeams();
+  }
+});
+
+renderRoster();
+checkBackendConnectivity();
+</script>
+</body>
+</html>
