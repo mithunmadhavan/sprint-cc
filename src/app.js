@@ -8,9 +8,9 @@ const correlationId = require("./middleware/correlationId");
 const requestLogger = require("./middleware/requestLogger");
 
 const app = express();
-const backendRoot = path.join(__dirname, "..");
-const publicDir = path.join(backendRoot, "public");
-const rootIndexPath = path.join(backendRoot, "..", "index.html");
+const projectRoot = path.join(__dirname, "..");
+const publicDir = path.join(projectRoot, "public");
+const rootIndexPath = path.join(projectRoot, "index.html");
 const publicIndexPath = path.join(publicDir, "index.html");
 
 app.set("trust proxy", true);
