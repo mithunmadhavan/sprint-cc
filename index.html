@@ -333,10 +333,10 @@ const CONFIG = {
   REDIRECT_URI: "https://eystaticwebsite.z1.web.core.windows.net/sprintcapacity.html",
   DOMAIN_HINT: "etihad.ae",
   ADMIN_GROUP_ID: "YOUR_ADMIN_GROUP_OBJECT_ID",
-  API_BASE_URL: "http://localhost:3000",
+  API_BASE_URL: "",
 };
 
-const API_BASE = CONFIG.API_BASE_URL.replace(/\/$/, "");
+const API_BASE = (window.location.protocol === "file:" ? "http://localhost:3000" : (CONFIG.API_BASE_URL || "")).replace(/\/$/, "");
 
 const TEAMS = [
   { name:"McLaren",      key:"MC"   },

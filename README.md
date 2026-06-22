@@ -30,6 +30,8 @@ Backend runs on `http://localhost:3000` by default.
 
 Open `index.html` in your browser. It calls the backend API at `http://localhost:3000`.
 
+When deployed, `index.html` calls same-origin APIs (`/api/*`) automatically.
+
 ## 2) API endpoints
 
 - Route behavior:
