@@ -2,7 +2,7 @@
   "name": "sprint-cc-backend",
   "version": "1.0.0",
   "private": true,
-  "description": "Express + MongoDB backend for Sprint Capacity Collector",
+  "description": "Sprint Capacity Collector",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
