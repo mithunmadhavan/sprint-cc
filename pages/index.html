@@ -633,6 +633,7 @@ function initTeamDropdown() {
 let sprintAcDebounceTimer = null;
 let sprintAcAbortController = null;
 let sprintAcActiveIndex = -1;
+let sprintAcIgnoreInput = false;
 
 function normalizeSprintRecord(s) {
   return {
@@ -727,10 +728,41 @@ function setSprintAcActiveIndex(index) {
 }
 
 function setSprintSelection(sprintNo, displayLabel, { triggerChange = false } = {}) {
+  sprintAcIgnoreInput = true;
   document.getElementById("sprintSel").value = sprintNo;
   document.getElementById("sprintSelInput").value = displayLabel;
+  sprintAcIgnoreInput = false;
   hideSprintAcList();
   if (triggerChange) onTeamSprintChange();
+}
+
+function searchSprints(query) {
+  clearTimeout(sprintAcDebounceTimer);
+  const trimmed = query.trim();
+  if (!trimmed) {
+    document.getElementById("sprintSel").value = "";
+    renderSprintAcList(getDefaultSprintChoices().visible);
+    onTeamSprintChange();
+    return;
+  }
+
+  sprintAcDebounceTimer = setTimeout(async () => {
+    if (sprintAcAbortController) sprintAcAbortController.abort();
+    sprintAcAbortController = new AbortController();
+    try {
+      const params = new URLSearchParams({ sprint: trimmed });
+      const resp = await fetch(`${API_BASE}/api/sprints?${params.toString()}`, {
+        signal: sprintAcAbortController.signal,
+        cache: "no-store",
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const json = await resp.json();
+      mergeSprintsIntoCalendar(json.sprints || []);
+      renderSprintAcList((json.sprints || []).map(normalizeSprintRecord));
+    } catch (error) {
+      if (error.name !== "AbortError") hideSprintAcList();
+    }
+  }, 250);
 }
 
 function renderSprintAcList(items = []) {
@@ -770,42 +802,20 @@ async function initSprintAutocomplete() {
     }
   }
 
-  input.addEventListener("input", () => {
-    clearTimeout(sprintAcDebounceTimer);
-    const query = input.value.trim();
+  input.addEventListener("input", (event) => {
+    if (sprintAcIgnoreInput || !event.isTrusted) return;
 
-    if (!query) {
+    const query = input.value;
+    const selectedSprint = hidden.value;
+    if (selectedSprint && !query.trim().startsWith(selectedSprint)) {
       hidden.value = "";
-      renderSprintAcList(getDefaultSprintChoices().visible);
-      onTeamSprintChange();
-      return;
     }
 
-    sprintAcDebounceTimer = setTimeout(async () => {
-      if (sprintAcAbortController) sprintAcAbortController.abort();
-      sprintAcAbortController = new AbortController();
-      try {
-        const params = new URLSearchParams({ sprint: query });
-        const resp = await fetch(`${API_BASE}/api/sprints?${params.toString()}`, {
-          signal: sprintAcAbortController.signal,
-          cache: "no-store",
-        });
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const json = await resp.json();
-        mergeSprintsIntoCalendar(json.sprints || []);
-        renderSprintAcList((json.sprints || []).map(normalizeSprintRecord));
-      } catch (error) {
-        if (error.name !== "AbortError") hideSprintAcList();
-      }
-    }, 250);
+    searchSprints(query);
   });
 
   input.addEventListener("focus", () => {
-    if (!input.value.trim()) {
-      renderSprintAcList(getDefaultSprintChoices().visible);
-      return;
-    }
-    input.dispatchEvent(new Event("input"));
+    renderSprintAcList(getDefaultSprintChoices().visible);
   });
 
   input.addEventListener("blur", () => {
@@ -815,10 +825,14 @@ async function initSprintAutocomplete() {
       if (sprintNo) {
         const info = SPRINT_CALENDAR.find((s) => s.sprint === sprintNo);
         if (info) {
+          sprintAcIgnoreInput = true;
           input.value = sprintOptionLabel(info);
+          sprintAcIgnoreInput = false;
         }
       } else if (input.value.trim()) {
+        sprintAcIgnoreInput = true;
         input.value = "";
+        sprintAcIgnoreInput = false;
       }
     }, 150);
   });
@@ -828,8 +842,12 @@ async function initSprintAutocomplete() {
     const items = list.querySelectorAll(".ac-item");
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      if (list.classList.contains("hidden") && input.value.trim()) {
-        input.dispatchEvent(new Event("input"));
+      if (list.classList.contains("hidden")) {
+        if (hidden.value) {
+          renderSprintAcList(getDefaultSprintChoices().visible);
+        } else {
+          searchSprints(input.value);
+        }
         return;
       }
       setSprintAcActiveIndex(Math.min(sprintAcActiveIndex + 1, items.length - 1));
