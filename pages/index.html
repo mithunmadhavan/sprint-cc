@@ -83,8 +83,12 @@
         <select id="teamSel"><option value="">— Select team —</option></select>
       </div>
       <div>
-        <label for="sprintSel">Sprint</label>
-        <select id="sprintSel"><option value="">— Select sprint —</option></select>
+        <label for="sprintSelInput">Sprint</label>
+        <div class="ac-wrap" id="sprintAcWrap">
+          <input type="text" id="sprintSelInput" autocomplete="off" placeholder="Type to search sprint…">
+          <input type="hidden" id="sprintSel" value="">
+          <ul class="ac-list hidden" id="sprintAcList" role="listbox"></ul>
+        </div>
       </div>
     </div>
     <div class="readout">
@@ -608,7 +612,7 @@ function bootApp() {
      if (SPRINT_CALENDAR.length === 0) warnings.push("No sprint calendar records were returned by the backend.");
      setConfigWarning(warnings);
      initTeamDropdown();
-     populateSprintDropdown();
+     initSprintAutocomplete();
       syncConfigDependentUi();
      updateReadout();
      renderRoster();
@@ -626,9 +630,40 @@ function initTeamDropdown() {
   sel.onchange = onTeamSprintChange;
 }
 
-function populateSprintDropdown() {
-  const sel = document.getElementById("sprintSel");
-  const flag = document.getElementById("windowFlag");
+let sprintAcDebounceTimer = null;
+let sprintAcAbortController = null;
+let sprintAcActiveIndex = -1;
+
+function normalizeSprintRecord(s) {
+  return {
+    sprint: s.sprint,
+    pi: s.pi,
+    start: s.start.slice(0, 10),
+    end: s.end.slice(0, 10),
+  };
+}
+
+function mergeSprintsIntoCalendar(sprints = []) {
+  sprints.forEach((s) => {
+    const rec = normalizeSprintRecord(s);
+    const idx = SPRINT_CALENDAR.findIndex((item) => item.sprint === rec.sprint);
+    if (idx >= 0) SPRINT_CALENDAR[idx] = rec;
+    else SPRINT_CALENDAR.push(rec);
+  });
+}
+
+function sprintOptionSuffix(s, phase) {
+  if (phase === "Current") return `Current · ${fmtDate(s.start)} – ${fmtDate(s.end)}`;
+  if (phase === "Next") return `Next · opens ${fmtDate(s.start)}`;
+  if (phase === "Previous") return `Previous · ended ${fmtDate(s.end)}`;
+  return `${fmtDate(s.start)} – ${fmtDate(s.end)}`;
+}
+
+function sprintOptionLabel(s, phase) {
+  return `${s.sprint}  (${sprintOptionSuffix(s, phase)})`;
+}
+
+function getDefaultSprintChoices() {
   const sorted = [...SPRINT_CALENDAR].sort((a, b) => a.start.localeCompare(b.start));
   const currentIndex = sorted.findIndex((s) => TODAY >= s.start && TODAY <= s.end);
   const nextIndex = currentIndex >= 0
@@ -640,9 +675,7 @@ function populateSprintDropdown() {
   const visible = [];
   const pushVisible = (index, phase) => {
     const sprint = sorted[index];
-    if (!sprint || visible.some((item) => item.sprint === sprint.sprint)) {
-      return;
-    }
+    if (!sprint || visible.some((item) => item.sprint === sprint.sprint)) return;
     visible.push({ ...sprint, phase });
   };
 
@@ -654,15 +687,16 @@ function populateSprintDropdown() {
     visible.push({ ...sorted[sorted.length - 1], phase: "Previous" });
   }
 
-  sel.innerHTML = '<option value="">— Select sprint —</option>';
-  visible.forEach((s) => {
-    const suffix = s.phase === "Current"
-      ? `Current · ${fmtDate(s.start)} – ${fmtDate(s.end)}`
-      : s.phase === "Next"
-        ? `Next · opens ${fmtDate(s.start)}`
-        : `Previous · ended ${fmtDate(s.end)}`;
-    sel.appendChild(new Option(`${s.sprint}  (${suffix})`, s.sprint));
-  });
+  const defaultSprint = currentIndex >= 0 && sorted[currentIndex]
+    ? sorted[currentIndex].sprint
+    : (nextIndex >= 0 && sorted[nextIndex] ? sorted[nextIndex].sprint : visible[0]?.sprint || "");
+
+  return { visible, defaultSprint, currentIndex, nextIndex };
+}
+
+function updateSprintWindowFlag() {
+  const flag = document.getElementById("windowFlag");
+  const { currentIndex, nextIndex } = getDefaultSprintChoices();
 
   if (currentIndex === -1) {
     flag.textContent = nextIndex >= 0
@@ -675,12 +709,149 @@ function populateSprintDropdown() {
     flag.classList.add("state-open");
     flag.classList.remove("state-warning");
   }
+}
 
-  const defaultSprint = currentIndex >= 0 && sorted[currentIndex]
-    ? sorted[currentIndex].sprint
-    : (nextIndex >= 0 && sorted[nextIndex] ? sorted[nextIndex].sprint : visible[0]?.sprint || "");
-  sel.value = defaultSprint;
-  sel.onchange = onTeamSprintChange;
+function hideSprintAcList() {
+  document.getElementById("sprintAcList").classList.add("hidden");
+  sprintAcActiveIndex = -1;
+}
+
+function setSprintAcActiveIndex(index) {
+  const list = document.getElementById("sprintAcList");
+  const items = list.querySelectorAll(".ac-item");
+  items.forEach((item, i) => item.classList.toggle("active", i === index));
+  sprintAcActiveIndex = index;
+  if (index >= 0 && items[index]) {
+    items[index].scrollIntoView({ block: "nearest" });
+  }
+}
+
+function setSprintSelection(sprintNo, displayLabel, { triggerChange = false } = {}) {
+  document.getElementById("sprintSel").value = sprintNo;
+  document.getElementById("sprintSelInput").value = displayLabel;
+  hideSprintAcList();
+  if (triggerChange) onTeamSprintChange();
+}
+
+function renderSprintAcList(items = []) {
+  const list = document.getElementById("sprintAcList");
+  if (!items.length) {
+    list.innerHTML = '<li class="ac-empty">No sprints found</li>';
+    list.classList.remove("hidden");
+    return;
+  }
+
+  list.innerHTML = items.map((s) => {
+    const label = sprintOptionLabel(s, s.phase);
+    return `<li class="ac-item" role="option" data-sprint="${esc(s.sprint)}" data-label="${esc(label)}">${esc(label)}</li>`;
+  }).join("");
+  list.classList.remove("hidden");
+  sprintAcActiveIndex = -1;
+
+  list.querySelectorAll(".ac-item").forEach((item) => {
+    item.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      setSprintSelection(item.dataset.sprint, item.dataset.label, { triggerChange: true });
+    });
+  });
+}
+
+async function initSprintAutocomplete() {
+  const input = document.getElementById("sprintSelInput");
+  const hidden = document.getElementById("sprintSel");
+
+  updateSprintWindowFlag();
+
+  const { visible, defaultSprint } = getDefaultSprintChoices();
+  if (defaultSprint) {
+    const selected = visible.find((s) => s.sprint === defaultSprint) || SPRINT_CALENDAR.find((s) => s.sprint === defaultSprint);
+    if (selected) {
+      setSprintSelection(defaultSprint, sprintOptionLabel(selected, selected.phase));
+    }
+  }
+
+  input.addEventListener("input", () => {
+    clearTimeout(sprintAcDebounceTimer);
+    const query = input.value.trim();
+
+    if (!query) {
+      hidden.value = "";
+      renderSprintAcList(getDefaultSprintChoices().visible);
+      onTeamSprintChange();
+      return;
+    }
+
+    sprintAcDebounceTimer = setTimeout(async () => {
+      if (sprintAcAbortController) sprintAcAbortController.abort();
+      sprintAcAbortController = new AbortController();
+      try {
+        const params = new URLSearchParams({ sprint: query });
+        const resp = await fetch(`${API_BASE}/api/sprints?${params.toString()}`, {
+          signal: sprintAcAbortController.signal,
+          cache: "no-store",
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const json = await resp.json();
+        mergeSprintsIntoCalendar(json.sprints || []);
+        renderSprintAcList((json.sprints || []).map(normalizeSprintRecord));
+      } catch (error) {
+        if (error.name !== "AbortError") hideSprintAcList();
+      }
+    }, 250);
+  });
+
+  input.addEventListener("focus", () => {
+    if (!input.value.trim()) {
+      renderSprintAcList(getDefaultSprintChoices().visible);
+      return;
+    }
+    input.dispatchEvent(new Event("input"));
+  });
+
+  input.addEventListener("blur", () => {
+    setTimeout(() => {
+      hideSprintAcList();
+      const sprintNo = hidden.value;
+      if (sprintNo) {
+        const info = SPRINT_CALENDAR.find((s) => s.sprint === sprintNo);
+        if (info) {
+          input.value = sprintOptionLabel(info);
+        }
+      } else if (input.value.trim()) {
+        input.value = "";
+      }
+    }, 150);
+  });
+
+  input.addEventListener("keydown", (event) => {
+    const list = document.getElementById("sprintAcList");
+    const items = list.querySelectorAll(".ac-item");
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      if (list.classList.contains("hidden") && input.value.trim()) {
+        input.dispatchEvent(new Event("input"));
+        return;
+      }
+      setSprintAcActiveIndex(Math.min(sprintAcActiveIndex + 1, items.length - 1));
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setSprintAcActiveIndex(Math.max(sprintAcActiveIndex - 1, 0));
+    } else if (event.key === "Enter") {
+      if (sprintAcActiveIndex >= 0 && items[sprintAcActiveIndex]) {
+        event.preventDefault();
+        const item = items[sprintAcActiveIndex];
+        setSprintSelection(item.dataset.sprint, item.dataset.label, { triggerChange: true });
+      }
+    } else if (event.key === "Escape") {
+      hideSprintAcList();
+    }
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!document.getElementById("sprintAcWrap").contains(event.target)) {
+      hideSprintAcList();
+    }
+  });
 }
 
 function updateReadout() {
