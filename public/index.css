@@ -34,6 +34,8 @@ body{margin:0;font-family:-apple-system,'Segoe UI',Inter,Arial,sans-serif;backgr
 .head h1{font-size:26px;margin:0 0 4px;letter-spacing:-.02em;font-weight:800;}
 .head .sub{color:var(--ink-soft);font-size:13.5px;margin:0;}
 .head .flag{font-family:var(--mono);font-size:11px;color:var(--accent);background:var(--accent-soft);border:1px solid #f0c9b5;border-radius:4px;padding:5px 10px;font-weight:700;letter-spacing:.04em;}
+.head .flag.state-warning{color:var(--warn);background:var(--warn-soft);border-color:#f3d99a;}
+.head .flag.state-open{color:var(--green);background:var(--green-soft);border-color:#b9e3cd;}
 
 /* ── Step bar ── */
 .stepbar{display:flex;margin-bottom:24px;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--card);}
@@ -76,6 +78,7 @@ tbody tr:nth-child(even){background:#fafbfc;}
 tbody tr.role-architect,tbody tr.role-scrummaster,tbody tr.role-productowner{background:#f3f1fb;}
 td input[type=number]{width:56px;padding:5px 6px;text-align:center;font-family:var(--mono);font-size:13px;}
 td input[type=text]{font-size:12px;padding:5px 8px;min-width:160px;}
+.row-name-input{font-weight:700;border:none;background:transparent;padding:4px;width:160px;}
 td.pct select{font-family:var(--mono);font-size:13px;padding:5px 6px;}
 td.avail{font-family:var(--mono);font-weight:800;text-align:center;background:#f0fdf6;color:var(--green);}
 .ic-btn{border:1px solid var(--line);background:#fff;border-radius:5px;width:24px;height:24px;cursor:pointer;font-size:13px;color:var(--ink-soft);line-height:1;}
@@ -131,6 +134,7 @@ code{background:#eef0f3;padding:1px 5px;border-radius:4px;font-family:var(--mono
 .history-strip{font-size:11.5px;color:var(--ink-soft);margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);}
 .config-warn{background:#fff7ed;border:1px solid #fcd34d;border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:12.5px;color:#92400e;display:none;}
 .config-warn b{color:#78350f;}
+.config-warn-list{margin:8px 0 0 18px;padding:0;}
 
 /* ── Submission history ── */
 .all-submissions-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-top:16px;overflow-x:auto;padding-bottom:2px;}
@@ -145,3 +149,16 @@ code{background:#eef0f3;padding:1px 5px;border-radius:4px;font-family:var(--mono
 .conn-status{position:fixed;left:12px;top:12px;z-index:1001;font-family:var(--mono);font-size:11px;font-weight:700;border-radius:999px;padding:6px 10px;border:1px solid var(--line);background:#eef0f3;color:var(--ink-soft);}
 .conn-status.online{background:var(--green-soft);color:var(--green);border-color:#b9e3cd;}
 .conn-status.offline{background:#fef2f2;color:#b91c1c;border-color:#fca5a5;}
+
+/* Inline-style replacements */
+.center{text-align:center;}
+.hidden{display:none;}
+.microsoft-logo{width:38px;height:38px;}
+.all-grid-msg{font-size:12px;grid-column:1/-1;}
+.all-grid-msg.muted{color:var(--ink-soft);}
+.all-grid-msg.error{color:#b91c1c;}
+.kpi-bif-text{font-size:16px;}
+.bif-segment{width:0;}
+.legend-swatch-dev{background:var(--blue);}
+.legend-swatch-test{background:var(--accent);}
+
