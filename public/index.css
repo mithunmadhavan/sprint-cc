@@ -124,11 +124,11 @@ td.avail{font-family:var(--mono);font-weight:800;text-align:center;background:#f
 .value-card.no-value{border-left-color:#999;}
 .value-card.goals-below{border-left-color:#c0392b;}
 .value-card.goals-met{border-left-color:var(--green);}
-.value-card-list{display:block;padding:0;background:transparent;border:none;}
+.value-card-list{display:block;padding:10px 12px 10px 0;background:transparent;border:none;}
 .value-card-list ul{margin:0;padding-left:20px;list-style:disc;}
-.value-card-list li{margin-bottom:8px;color:var(--ink);font-size:14px;font-weight:400;font-family:inherit;}
+.value-card-list li{margin-bottom:6px;color:var(--ink);font-size:14px;font-weight:400;font-family:inherit;line-height:1.5;}
 .value-card-list li + li{margin-top:0;}
-.value-card-na{color:var(--ink-soft);font-weight:600;}
+.value-card-na{color:var(--ink-soft);font-style:italic;font-size:13px;}
 .field-help{font-size:11.5px;margin:6px 0 0;line-height:1.4;}
 .field-help.editable{color:var(--green);}
 .field-help.locked{color:var(--warn);}

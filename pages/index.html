@@ -190,7 +190,7 @@
         <button type="button" class="ghost-btn" id="addObjectiveBtn">+ Add objective</button>
       </div>
       <div id="objectivesList"></div>
-      <div class="value-card value-card-list hidden" id="objectivesCard"></div>
+      <div class="value-card-list hidden" id="objectivesCard"></div>
       <p class="field-help" id="objectivesHelp">Objectives can be edited only before the sprint start date.</p>
     </div>
     <label for="submissionNotes">Submission Notes</label>
@@ -451,7 +451,7 @@ function syncSubmissionFieldState() {
     setFieldHelp(
       "sprintGoalHelp",
       sprintInfo
-        ? (sprintGoalEditable ? "Editable before the sprint start date." : `Shown as a card from ${fmtDate(sprintInfo.start)} onward.`)
+        ? (sprintGoalEditable ? "Editable before the sprint start date." : `Locked till ${fmtDate(sprintInfo.start)}.`)
         : "Select a sprint to manage sprint goal.",
       sprintGoalEditable
     );
@@ -461,15 +461,15 @@ function syncSubmissionFieldState() {
         ? (goalsAchievedEditable
           ? `Editable from ${fmtDate(sprintInfo.end)} through one week after.`
           : (TODAY < toDateKey(sprintInfo.end)
-            ? `Shown as N/A until ${fmtDate(sprintInfo.end)}.`
-            : `Shown as a card after ${fmtDate(new Date(new Date(sprintInfo.end).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10))}.`))
+            ? `N/A until ${fmtDate(sprintInfo.end)}.`
+            : `Locked after ${fmtDate(new Date(new Date(sprintInfo.end).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10))}.`))
         : "Select a sprint to manage goals achieved.",
       goalsAchievedEditable
     );
     setFieldHelp(
       "objectivesHelp",
       sprintInfo
-        ? (objectivesEditable ? "Objectives are editable before sprint start." : `Objectives locked from ${fmtDate(sprintInfo.start)} onward.`)
+        ? (objectivesEditable ? "Objectives are editable before sprint start." : `Locked from ${fmtDate(sprintInfo.start)} onward.`)
         : "Select a sprint to manage objectives.",
       objectivesEditable
     );
