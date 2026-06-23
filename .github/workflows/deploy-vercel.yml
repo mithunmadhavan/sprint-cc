@@ -58,11 +58,27 @@ jobs:
           fi
 
       - name: Generate .env from GitHub Environment
+        env:
+          MONGO_URI: ${{ secrets.MONGO_URI != '' && secrets.MONGO_URI || vars.MONGO_URI }}
         run: |
-          cat > .env << 'EOF'
-          PORT=3000
-          MONGO_URI=${{ vars.MONGO_URI != '' && vars.MONGO_URI || secrets.MONGO_URI }}
-          EOF
+          printf 'PORT=3000\nMONGO_URI=%s\n' "$MONGO_URI" > .env
+
+      - name: Set MONGO_URI as Vercel environment variable
+        env:
+          MONGO_URI: ${{ secrets.MONGO_URI != '' && secrets.MONGO_URI || vars.MONGO_URI }}
+        run: |
+          if [ -z "$MONGO_URI" ]; then
+            echo "MONGO_URI is empty — aborting" >&2
+            exit 1
+          fi
+          if [ "${GITHUB_REF_NAME}" = "production" ] || [ "${GITHUB_REF_NAME}" = "development" ]; then
+            TARGET_ENV_FLAGS="--environment=production"
+          else
+            TARGET_ENV_FLAGS="--environment=preview"
+          fi
+          # Remove existing value (ignore failure if not set)
+          echo "$MONGO_URI" | vercel env rm MONGO_URI $TARGET_ENV_FLAGS --yes --token="$VERCEL_TOKEN" 2>/dev/null || true
+          echo "$MONGO_URI" | vercel env add MONGO_URI $TARGET_ENV_FLAGS --token="$VERCEL_TOKEN"
 
       - name: Pull Vercel project settings
         run: |
