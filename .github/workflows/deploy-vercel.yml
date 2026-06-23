@@ -72,13 +72,14 @@ jobs:
             exit 1
           fi
           if [ "${GITHUB_REF_NAME}" = "production" ] || [ "${GITHUB_REF_NAME}" = "development" ]; then
-            TARGET_ENV_FLAGS="--environment=production"
+            TARGET_ENV="production"
           else
-            TARGET_ENV_FLAGS="--environment=preview"
+            TARGET_ENV="preview"
           fi
-          # Remove existing value (ignore failure if not set)
-          echo "$MONGO_URI" | vercel env rm MONGO_URI $TARGET_ENV_FLAGS --yes --token="$VERCEL_TOKEN" 2>/dev/null || true
-          echo "$MONGO_URI" | vercel env add MONGO_URI $TARGET_ENV_FLAGS --token="$VERCEL_TOKEN"
+          # Remove existing value silently (ignore failure if not yet set)
+          vercel env rm MONGO_URI "$TARGET_ENV" --yes --token="$VERCEL_TOKEN" 2>/dev/null || true
+          # Add updated value — env add reads value from stdin
+          echo "$MONGO_URI" | vercel env add MONGO_URI "$TARGET_ENV" --token="$VERCEL_TOKEN"
 
       - name: Pull Vercel project settings
         run: |
