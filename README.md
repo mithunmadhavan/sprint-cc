@@ -1,4 +1,4 @@
-# Sprint Capacity Collector
+# Sprint Planner
 
 This project now uses a **separate backend service** for persistence:
 

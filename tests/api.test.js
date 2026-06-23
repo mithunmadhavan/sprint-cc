@@ -24,6 +24,14 @@ test("backend upserts and reads submissions", async (t) => {
     await closeConnections();
   });
 
+  for (const sprint of [
+    { sprint: "35.1", pi: 35, start: "2099-01-01", end: "2099-01-14" },
+    { sprint: "35.2", pi: 35, start: "2099-01-15", end: "2099-01-28" },
+  ]) {
+    const seeded = await request(app).post("/api/sprints").send(sprint);
+    assert.equal(seeded.status, 201);
+  }
+
   const payload = {
     Team: "McLaren",
     ProjectKey: "MC",
@@ -39,6 +47,9 @@ test("backend upserts and reads submissions", async (t) => {
     TestCapacityDays: 0,
     DevPercent: 100,
     TestPercent: 0,
+    SprintGoal: 6,
+    GoalsAchieved: "",
+    Objectives: ["Deliver checkout enhancements", "Stabilise regression suite"],
     Notes: "First submit",
     Roster: [
       { name: "Alice", role: "Full Stack Dev", ph: 0, al: 0, other: 0, pct: 100, notes: "", AvailableDays: 8 }
@@ -57,11 +68,14 @@ test("backend upserts and reads submissions", async (t) => {
   assert.equal(read.status, 200);
   assert.equal(read.body.found, true);
   assert.equal(read.body.record.Team, "McLaren");
+  assert.equal(read.body.record.SprintGoal, 6);
+  assert.deepEqual(read.body.record.Objectives, ["Deliver checkout enhancements", "Stabilise regression suite"]);
+  assert.equal(read.body.record.GoalsAchieved, null);
   assert.equal(read.headers["x-correlation-id"], "test-corr-id");
 
   const second = await request(app)
     .post("/api/submissions/upsert")
-    .send({ ...payload, Notes: "Second submit" });
+    .send({ ...payload, Notes: "Second submit", SprintGoal: 7, Objectives: ["Deliver checkout enhancements"] });
   assert.equal(second.status, 200);
   assert.equal(second.body.isReplace, true);
 
@@ -84,11 +98,142 @@ test("backend upserts and reads submissions", async (t) => {
    assert.equal(filtered.status, 200);
    assert.equal(filtered.body.length, 1);
    assert.equal(filtered.body[0].Notes, "Second submit");
+    assert.equal(filtered.body[0].SprintGoal, 7);
+    assert.deepEqual(filtered.body[0].Objectives, ["Deliver checkout enhancements"]);
 
    const limited = await request(app).get("/api/submissions?limit=1");
    assert.equal(limited.status, 200);
    assert.equal(limited.body.length, 1);
    assert.equal(limited.body[0].ProjectKey, "CAD");
+});
+
+test("backend enforces submission field edit windows", async (t) => {
+  mongo = await MongoMemoryServer.create();
+  process.env.MONGO_URI = mongo.getUri();
+  process.env.VERCEL = "1";
+
+  app = require("../server");
+
+  t.after(async () => {
+    await closeConnections();
+  });
+
+  const now = new Date();
+  const dayMs = 24 * 60 * 60 * 1000;
+  const iso = (offset) => new Date(now.getTime() + offset * dayMs).toISOString().slice(0, 10);
+
+  for (const sprint of [
+    { sprint: "90.1", pi: 90, start: iso(2), end: iso(15) },
+    { sprint: "90.2", pi: 90, start: iso(-3), end: iso(4) },
+    { sprint: "90.3", pi: 90, start: iso(-20), end: iso(0) },
+    { sprint: "90.4", pi: 90, start: iso(-20), end: iso(-3) },
+    { sprint: "90.5", pi: 90, start: iso(-20), end: iso(-10) },
+  ]) {
+    const seeded = await request(app).post("/api/sprints").send(sprint);
+    assert.equal(seeded.status, 201);
+  }
+
+  const beforeStart = await request(app).post("/api/submissions/upsert").send({
+    Team: "McLaren",
+    ProjectKey: "MC",
+    SprintNo: "90.1",
+    submittedDate: iso(0),
+    submittedBy: "Tester",
+    SprintGoal: 8,
+    GoalsAchieved: "",
+    Objectives: ["Ship checkout", "Reduce defects"],
+    Notes: "pre-start",
+    Roster: [],
+  });
+  assert.equal(beforeStart.status, 200);
+
+  const duringSprintGoalBlocked = await request(app).post("/api/submissions/upsert").send({
+    Team: "McLaren",
+    ProjectKey: "MC",
+    SprintNo: "90.2",
+    submittedDate: iso(0),
+    submittedBy: "Tester",
+    SprintGoal: 5,
+    GoalsAchieved: "",
+    Objectives: [],
+    Notes: "during-sprint",
+    Roster: [],
+  });
+  assert.equal(duringSprintGoalBlocked.status, 400);
+  assert.match(duringSprintGoalBlocked.body.error, /sprint goal/i);
+
+  const duringObjectivesBlocked = await request(app).post("/api/submissions/upsert").send({
+    Team: "McLaren",
+    ProjectKey: "MC2",
+    SprintNo: "90.2",
+    submittedDate: iso(0),
+    submittedBy: "Tester",
+    SprintGoal: "",
+    GoalsAchieved: "",
+    Objectives: ["Late objective"],
+    Notes: "during-sprint",
+    Roster: [],
+  });
+  assert.equal(duringObjectivesBlocked.status, 400);
+  assert.match(duringObjectivesBlocked.body.error, /objectives/i);
+
+  const beforeEndGoalsBlocked = await request(app).post("/api/submissions/upsert").send({
+    Team: "McLaren",
+    ProjectKey: "MC3",
+    SprintNo: "90.2",
+    submittedDate: iso(0),
+    submittedBy: "Tester",
+    SprintGoal: "",
+    GoalsAchieved: 3,
+    Objectives: [],
+    Notes: "during-sprint",
+    Roster: [],
+  });
+  assert.equal(beforeEndGoalsBlocked.status, 400);
+  assert.match(beforeEndGoalsBlocked.body.error, /goals achieved/i);
+
+  const endDateAllowed = await request(app).post("/api/submissions/upsert").send({
+    Team: "McLaren",
+    ProjectKey: "MC4",
+    SprintNo: "90.3",
+    submittedDate: iso(0),
+    submittedBy: "Tester",
+    SprintGoal: "",
+    GoalsAchieved: 4,
+    Objectives: [],
+    Notes: "post-sprint",
+    Roster: [],
+  });
+  assert.equal(endDateAllowed.status, 200);
+
+  const withinWeekAllowed = await request(app).post("/api/submissions/upsert").send({
+    Team: "McLaren",
+    ProjectKey: "MC5",
+    SprintNo: "90.4",
+    submittedDate: iso(0),
+    submittedBy: "Tester",
+    SprintGoal: "",
+    GoalsAchieved: 6,
+    Objectives: [],
+    Notes: "within-week",
+    Roster: [],
+  });
+  assert.equal(withinWeekAllowed.status, 200);
+
+  const afterWeekBlocked = await request(app).post("/api/submissions/upsert").send({
+    Team: "McLaren",
+    ProjectKey: "MC6",
+    SprintNo: "90.5",
+    submittedDate: iso(0),
+    submittedBy: "Tester",
+    SprintGoal: "",
+    GoalsAchieved: 7,
+    Objectives: [],
+    Notes: "after-week",
+    Roster: [],
+  });
+  assert.equal(afterWeekBlocked.status, 400);
+  assert.match(afterWeekBlocked.body.error, /goals achieved/i);
 });
 
 test("backend manages sprints with CRUD, numeric PI, and next-PI generation", async (t) => {

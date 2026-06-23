@@ -33,6 +33,9 @@ const submissionSchema = new mongoose.Schema(
     TestCapacityDays: { type: Number, default: 0 },
     DevPercent: { type: Number, default: 0 },
     TestPercent: { type: Number, default: 0 },
+    SprintGoal: { type: Number, default: null, min: 0 },
+    GoalsAchieved: { type: Number, default: null, min: 0 },
+    Objectives: { type: [String], default: [] },
     Notes: { type: String, default: "" },
     Roster: { type: [rosterMemberSchema], default: [] }
   },

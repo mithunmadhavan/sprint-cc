@@ -31,14 +31,14 @@
       <rect x="1" y="12" width="10" height="10" fill="#00a4ef"/>
       <rect x="12" y="12" width="10" height="10" fill="#ffb900"/>
     </svg>
-    <h2>Sprint Capacity Collector</h2>
-    <p>Sign in with your Etihad company account. Role (Admin / Normal) is resolved automatically from your Azure AD group.</p>
+    <h2>Sprint Planner</h2>
+    <p>Sign in with your Etihad company account.</p>
     <button class="login-btn" id="ssoLoginBtn">
       <svg width="16" height="16" viewBox="0 0 23 23"><rect x="1" y="1" width="10" height="10" fill="#f25022"/><rect x="12" y="1" width="10" height="10" fill="#7fba00"/><rect x="1" y="12" width="10" height="10" fill="#00a4ef"/><rect x="12" y="12" width="10" height="10" fill="#ffb900"/></svg>
       Sign in with Microsoft
     </button>
     <div class="login-error" id="loginError">Sign-in failed. Please use your @etihad.ae company account.</div>
-    <div class="login-domain-note">tenant: etihad.ae &nbsp;|&nbsp; Entra ID OIDC / MSAL.js</div>
+    <div class="login-domain-note">tenant: etihad &nbsp;|&nbsp; Entra ID OIDC / MSAL.js</div>
   </div>
 </div>
 
@@ -62,7 +62,7 @@
 
   <div class="head">
     <div>
-      <h1>Sprint Capacity Collector</h1>
+      <h1>Sprint Planner</h1>
       <p class="sub">Acquire-to-Pay Agile Release Train — team capacity submission</p>
     </div>
     <div class="flag" id="windowFlag">SELECTION WINDOW</div>
@@ -169,7 +169,31 @@
 
   <!-- Submit -->
   <div class="card">
-    <h2><span class="titlewrap"><span class="dot"></span>Submission Notes</span></h2>
+    <h2><span class="titlewrap"><span class="dot"></span>Submission Details &amp; Notes</span></h2>
+    <div class="submission-meta-grid">
+      <div>
+        <label for="sprintGoalInput">Sprint Goal</label>
+        <input type="number" id="sprintGoalInput" min="0" step="1" placeholder="e.g., 5">
+        <div class="value-card hidden" id="sprintGoalCard"></div>
+        <p class="field-help" id="sprintGoalHelp">Sprint goal can be edited until the sprint start date.</p>
+      </div>
+      <div>
+        <label for="goalsAchievedInput">Goals Achieved</label>
+        <input type="number" id="goalsAchievedInput" min="0" step="1" placeholder="e.g., 4">
+        <div class="value-card hidden" id="goalsAchievedCard"></div>
+        <p class="field-help" id="goalsAchievedHelp">Goals achieved can be edited only after the sprint end date.</p>
+      </div>
+    </div>
+    <div class="objectives-block">
+      <div class="objectives-head">
+        <label class="objectives-label">Objectives</label>
+        <button type="button" class="ghost-btn" id="addObjectiveBtn">+ Add objective</button>
+      </div>
+      <div id="objectivesList"></div>
+      <div class="value-card value-card-list hidden" id="objectivesCard"></div>
+      <p class="field-help" id="objectivesHelp">Objectives can be edited only before the sprint start date.</p>
+    </div>
+    <label for="submissionNotes">Submission Notes</label>
     <textarea id="submissionNotes" placeholder="Any overall notes about this sprint's capacity submission (optional)..."></textarea>
     <div class="submit-row">
       <div class="meta-line">Submitted by: <b id="metaUser">—</b> &nbsp;|&nbsp; Date: <b id="metaDate">—</b></div>
@@ -205,6 +229,7 @@ const DEFAULT_ROSTER = [
 
 let CURRENT_USER = null;
 let rosterRows = JSON.parse(JSON.stringify(DEFAULT_ROSTER));
+let objectiveValues = [""];
 const TODAY = new Date().toISOString().slice(0,10);
 const CONNECTIVITY_MS = { online: 5000, offline: 30000 };
 let connTimer = null;
@@ -239,6 +264,219 @@ function fmtDate(iso) {
   const d = new Date(iso + "T00:00:00");
   return d.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});
 }
+
+function toDateKey(value) {
+  return new Date(value).toISOString().slice(0, 10);
+}
+
+function getSelectedSprintInfo() {
+  const sprintNo = document.getElementById("sprintSel").value;
+  return SPRINT_CALENDAR.find((s) => s.sprint === sprintNo) || null;
+}
+
+function normalizeObjectives(values = []) {
+  return values.map((value) => String(value || "").trim()).filter(Boolean);
+}
+
+function getSubmissionFieldState(sprintInfo) {
+   if (!sprintInfo?.start || !sprintInfo?.end) {
+     return {
+       objectivesEditable: false,
+       sprintGoalEditable: false,
+       goalsAchievedEditable: false,
+       sprintGoalDisplayMode: "card",
+       goalsAchievedDisplayMode: "card",
+       rosterEditable: false,
+     };
+   }
+
+   const start = toDateKey(sprintInfo.start);
+   const end = toDateKey(sprintInfo.end);
+   const goalsAchievedWindowEnd = toDateKey(new Date(new Date(sprintInfo.end).getTime() + 7 * 24 * 60 * 60 * 1000));
+   const sprintGoalEditable = TODAY < start;
+   const goalsAchievedEditable = TODAY >= end && TODAY <= goalsAchievedWindowEnd;
+   return {
+     objectivesEditable: TODAY < start,
+     sprintGoalEditable,
+     goalsAchievedEditable,
+     sprintGoalDisplayMode: sprintGoalEditable ? "input" : "card",
+     goalsAchievedDisplayMode: goalsAchievedEditable ? "input" : "card",
+     rosterEditable: TODAY < start,
+   };
+ }
+
+function setFieldHelp(id, text, editable) {
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.className = `field-help ${editable ? "editable" : "locked"}`;
+}
+
+function renderObjectives() {
+  const list = document.getElementById("objectivesList");
+  const card = document.getElementById("objectivesCard");
+  const { objectivesEditable } = getSubmissionFieldState(getSelectedSprintInfo());
+  const values = objectiveValues.length ? objectiveValues : [""];
+
+  if (!objectivesEditable) {
+    list.classList.add("hidden");
+    card.classList.remove("hidden");
+    const normalized = normalizeObjectives(values);
+    card.innerHTML = normalized.length
+      ? `<ul>${normalized.map((value) => `<li>${esc(value)}</li>`).join("")}</ul>`
+      : '<span class="value-card-na">No objectives</span>';
+    return;
+  }
+
+  list.classList.remove("hidden");
+  card.classList.add("hidden");
+
+  list.innerHTML = values.map((value, index) => `
+    <div class="objective-row">
+      <input
+        type="text"
+        class="objective-input"
+        data-objective-index="${index}"
+        value="${esc(value)}"
+        placeholder="Objective ${index + 1}"
+        ${!objectivesEditable ? "disabled" : ""}
+      >
+      <button
+        type="button"
+        class="objective-remove"
+        data-remove-objective="${index}"
+        ${!objectivesEditable || values.length === 1 ? "disabled" : ""}
+      >Remove</button>
+    </div>
+  `).join("");
+
+  list.querySelectorAll("[data-objective-index]").forEach((input) => {
+    input.addEventListener("input", (event) => {
+      objectiveValues[Number(event.target.dataset.objectiveIndex)] = event.target.value;
+    });
+  });
+
+  list.querySelectorAll("[data-remove-objective]").forEach((button) => {
+    button.addEventListener("click", () => {
+      objectiveValues.splice(Number(button.dataset.removeObjective), 1);
+      if (objectiveValues.length === 0) {
+        objectiveValues = [""];
+      }
+      renderObjectives();
+    });
+  });
+}
+
+function setSubmissionMeta(record = null) {
+  document.getElementById("sprintGoalInput").value = record?.SprintGoal ?? "";
+  document.getElementById("goalsAchievedInput").value = record?.GoalsAchieved ?? "";
+  objectiveValues = Array.isArray(record?.Objectives) && record.Objectives.length
+    ? [...record.Objectives]
+    : record?.Objective
+      ? [record.Objective]
+      : [""];
+  renderObjectives();
+}
+
+function updateGoalsAchievedColor() {
+  const sprintGoalInput = document.getElementById("sprintGoalInput");
+  const goalsAchievedInput = document.getElementById("goalsAchievedInput");
+  const goalsAchievedCard = document.getElementById("goalsAchievedCard");
+  const sprintInfo = getSelectedSprintInfo();
+
+  if (!goalsAchievedCard.classList.contains("hidden")) {
+    const goalsAchievedValue = goalsAchievedInput.value !== "" ? goalsAchievedInput.value : "N/A";
+    const gaValue = sprintInfo && TODAY < toDateKey(sprintInfo.end) ? "—" : goalsAchievedValue;
+
+    goalsAchievedCard.classList.remove("no-value", "goals-below", "goals-met");
+    if (gaValue === "—" || gaValue === "N/A" || goalsAchievedValue === "N/A" || goalsAchievedValue === "") {
+      goalsAchievedCard.classList.add("no-value");
+    } else {
+      const goalsNum = Number(goalsAchievedValue);
+      const sprintGoalNum = Number(sprintGoalInput.value || 0);
+      if (sprintGoalNum > 0 && goalsNum < sprintGoalNum) {
+        goalsAchievedCard.classList.add("goals-below");
+      } else if (sprintGoalNum > 0 && goalsNum >= sprintGoalNum) {
+        goalsAchievedCard.classList.add("goals-met");
+      }
+    }
+  }
+}
+
+function syncSubmissionFieldState() {
+    const sprintInfo = getSelectedSprintInfo();
+    const {
+      objectivesEditable,
+      sprintGoalEditable,
+      goalsAchievedEditable,
+      sprintGoalDisplayMode,
+      goalsAchievedDisplayMode,
+      rosterEditable,
+    } = getSubmissionFieldState(sprintInfo);
+   const addObjectiveBtn = document.getElementById("addObjectiveBtn");
+   const sprintGoalInput = document.getElementById("sprintGoalInput");
+   const goalsAchievedInput = document.getElementById("goalsAchievedInput");
+   const sprintGoalCard = document.getElementById("sprintGoalCard");
+   const goalsAchievedCard = document.getElementById("goalsAchievedCard");
+   const addRowBtn = document.getElementById("addRowBtn");
+   const sprintGoalValue = sprintGoalInput.value !== "" ? sprintGoalInput.value : "N/A";
+   const goalsAchievedValue = goalsAchievedInput.value !== "" ? goalsAchievedInput.value : "N/A";
+
+    // Sprint Goal: Card by default, input when editable
+    if (sprintGoalDisplayMode === "card") {
+      sprintGoalInput.classList.add("hidden");
+      sprintGoalCard.classList.remove("hidden");
+      sprintGoalCard.innerHTML = `<div>${sprintGoalValue === "N/A" ? "—" : sprintGoalValue}</div>`;
+    } else {
+      sprintGoalInput.classList.remove("hidden");
+      sprintGoalCard.classList.add("hidden");
+    }
+
+    // Goals Achieved: Card by default, input when editable
+    if (goalsAchievedDisplayMode === "card") {
+      goalsAchievedInput.classList.add("hidden");
+      goalsAchievedCard.classList.remove("hidden");
+      const gaValue = sprintInfo && TODAY < toDateKey(sprintInfo.end) ? "—" : goalsAchievedValue;
+      goalsAchievedCard.innerHTML = `<div>${gaValue === "N/A" ? "—" : gaValue}</div>`;
+    } else {
+      goalsAchievedInput.classList.remove("hidden");
+      goalsAchievedCard.classList.add("hidden");
+    }
+
+    sprintGoalInput.disabled = !sprintGoalEditable;
+    goalsAchievedInput.disabled = !goalsAchievedEditable;
+    addObjectiveBtn.disabled = !objectivesEditable;
+    addRowBtn.disabled = !rosterEditable;
+    addRowBtn.title = rosterEditable ? "" : "Team roster is locked once the sprint has started";
+
+    setFieldHelp(
+      "sprintGoalHelp",
+      sprintInfo
+        ? (sprintGoalEditable ? "Editable before the sprint start date." : `Shown as a card from ${fmtDate(sprintInfo.start)} onward.`)
+        : "Select a sprint to manage sprint goal.",
+      sprintGoalEditable
+    );
+    setFieldHelp(
+      "goalsAchievedHelp",
+      sprintInfo
+        ? (goalsAchievedEditable
+          ? `Editable from ${fmtDate(sprintInfo.end)} through one week after.`
+          : (TODAY < toDateKey(sprintInfo.end)
+            ? `Shown as N/A until ${fmtDate(sprintInfo.end)}.`
+            : `Shown as a card after ${fmtDate(new Date(new Date(sprintInfo.end).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10))}.`))
+        : "Select a sprint to manage goals achieved.",
+      goalsAchievedEditable
+    );
+    setFieldHelp(
+      "objectivesHelp",
+      sprintInfo
+        ? (objectivesEditable ? "Objectives are editable before sprint start." : `Objectives locked from ${fmtDate(sprintInfo.start)} onward.`)
+        : "Select a sprint to manage objectives.",
+      objectivesEditable
+    );
+
+    renderObjectives();
+    updateGoalsAchievedColor();
+ }
 
 function showLoading(msg) {
   document.getElementById("loadingLabel").textContent = msg || "Loading…"; 
@@ -380,33 +618,64 @@ function initTeamDropdown() {
   const sel = document.getElementById("teamSel");
   sel.innerHTML = '<option value="">— Select team —</option>';
   TEAMS.forEach(t => { const o = new Option(t.name, t.key); sel.appendChild(o); });
-  sel.addEventListener("change", onTeamSprintChange);
+  sel.onchange = onTeamSprintChange;
 }
 
 function populateSprintDropdown() {
-  const sel   = document.getElementById("sprintSel");
-  const flag  = document.getElementById("windowFlag");
-  const open  = SPRINT_CALENDAR.filter(s => TODAY >= s.start && TODAY <= s.end);
-  let selectable = [];
+  const sel = document.getElementById("sprintSel");
+  const flag = document.getElementById("windowFlag");
+  const sorted = [...SPRINT_CALENDAR].sort((a, b) => a.start.localeCompare(b.start));
+  const currentIndex = sorted.findIndex((s) => TODAY >= s.start && TODAY <= s.end);
+  const nextIndex = currentIndex >= 0
+    ? currentIndex + 1
+    : sorted.findIndex((s) => s.start > TODAY);
+  const previousIndex = currentIndex >= 0
+    ? currentIndex - 1
+    : (nextIndex > 0 ? nextIndex - 1 : (nextIndex === -1 && sorted.length ? sorted.length - 1 : -1));
+  const visible = [];
+  const pushVisible = (index, phase) => {
+    const sprint = sorted[index];
+    if (!sprint || visible.some((item) => item.sprint === sprint.sprint)) {
+      return;
+    }
+    visible.push({ ...sprint, phase });
+  };
+
+  pushVisible(previousIndex, "Previous");
+  pushVisible(currentIndex, "Current");
+  pushVisible(nextIndex, "Next");
+
+  if (visible.length === 0 && sorted.length) {
+    visible.push({ ...sorted[sorted.length - 1], phase: "Previous" });
+  }
+
   sel.innerHTML = '<option value="">— Select sprint —</option>';
-  if (open.length === 0) {
-    const nxt = SPRINT_CALENDAR.filter(s => s.start > TODAY).sort((a,b)=>a.start.localeCompare(b.start));
-    selectable = nxt.length ? [nxt[0]] : SPRINT_CALENDAR.slice(-1);
-    selectable.forEach(s => sel.appendChild(new Option(`${s.sprint}  (opens ${fmtDate(s.start)})`, s.sprint)));
-    flag.textContent = "NO WINDOW OPEN — SHOWING NEXT SPRINT";
+  visible.forEach((s) => {
+    const suffix = s.phase === "Current"
+      ? `Current · ${fmtDate(s.start)} – ${fmtDate(s.end)}`
+      : s.phase === "Next"
+        ? `Next · opens ${fmtDate(s.start)}`
+        : `Previous · ended ${fmtDate(s.end)}`;
+    sel.appendChild(new Option(`${s.sprint}  (${suffix})`, s.sprint));
+  });
+
+  if (currentIndex === -1) {
+    flag.textContent = nextIndex >= 0
+      ? "NO WINDOW OPEN — SHOWING PREVIOUS + NEXT SPRINTS"
+      : "NO UPCOMING WINDOW — SHOWING LAST SPRINT";
     flag.classList.add("state-warning");
     flag.classList.remove("state-open");
   } else {
-    selectable = open;
-    open.forEach(s => sel.appendChild(new Option(`${s.sprint}  (${fmtDate(s.start)} – ${fmtDate(s.end)})`, s.sprint)));
-    flag.textContent = `SELECTION WINDOW OPEN — ${open.length} SPRINT${open.length>1?"S":""}`;
+    flag.textContent = "SELECTION WINDOW OPEN — SHOWING PREVIOUS / CURRENT / NEXT";
     flag.classList.add("state-open");
     flag.classList.remove("state-warning");
   }
-  if (selectable.length === 1) {
-    sel.value = selectable[0].sprint;
-  }
-  sel.addEventListener("change", onTeamSprintChange);
+
+  const defaultSprint = currentIndex >= 0 && sorted[currentIndex]
+    ? sorted[currentIndex].sprint
+    : (nextIndex >= 0 && sorted[nextIndex] ? sorted[nextIndex].sprint : visible[0]?.sprint || "");
+  sel.value = defaultSprint;
+  sel.onchange = onTeamSprintChange;
 }
 
 function updateReadout() {
@@ -415,6 +684,7 @@ function updateReadout() {
   document.getElementById("roPI").textContent    = info ? `PI ${info.pi}` : "—";
   document.getElementById("roStart").textContent = info ? fmtDate(info.start) : "—";
   document.getElementById("roEnd").textContent   = info ? fmtDate(info.end)   : "—";
+  syncSubmissionFieldState();
 }
 
 async function onTeamSprintChange() {
@@ -425,7 +695,13 @@ async function onTeamSprintChange() {
 
   loadAllTeams();
 
-  if (!teamKey || !sprintVal) { strip.style.display = "none"; return; }
+  if (!teamKey || !sprintVal) {
+    strip.style.display = "none";
+    document.getElementById("submissionNotes").value = "";
+    setSubmissionMeta(null);
+    syncSubmissionFieldState();
+    return;
+  }
 
   const rec = await spRead(teamKey, sprintVal);
 
@@ -435,15 +711,16 @@ async function onTeamSprintChange() {
     if (rec.Roster && Array.isArray(rec.Roster)) {
       rosterRows = JSON.parse(JSON.stringify(rec.Roster));
     }
-    if (rec.Notes || rec.SprintNotes) {
-      document.getElementById("submissionNotes").value = rec.Notes || rec.SprintNotes || "";
-    }
+    document.getElementById("submissionNotes").value = rec.Notes || rec.SprintNotes || "";
+    setSubmissionMeta(rec);
   } else {
     strip.style.display  = "block";
     strip.innerHTML = `No existing submission found for this Team + Sprint — submitting will create a new record.`;
     rosterRows = JSON.parse(JSON.stringify(DEFAULT_ROSTER));
     document.getElementById("submissionNotes").value = "";
+    setSubmissionMeta(null);
   }
+  syncSubmissionFieldState();
   renderRoster();
 }
 
@@ -554,6 +831,8 @@ function availDays(row) {
 
 function renderRoster() {
   const isAdmin = CURRENT_USER?.role === "admin";
+  const { rosterEditable } = getSubmissionFieldState(getSelectedSprintInfo());
+  const isLocked = !rosterEditable;
   const body    = document.getElementById("rosterBody");
   const roleOptions = getRoleOptions();
   body.innerHTML = "";
@@ -569,15 +848,15 @@ function renderRoster() {
       : [...roleOptions, row.role].filter(Boolean);
 
     tr.innerHTML = `
-      <td><input type="text" data-f="name" data-i="${idx}" value="${esc(row.name)}" class="row-name-input"></td>
-      <td><select data-f="role" data-i="${idx}">${optionValues.map(r=>`<option value="${r}" ${r===row.role?"selected":""}>${r}</option>`).join("")}</select></td>
-      <td><input type="number" data-f="ph"    data-i="${idx}" value="${row.ph}"    min="0" step="0.5"></td>
-      <td><input type="number" data-f="al"    data-i="${idx}" value="${row.al}"    min="0" step="0.5"></td>
-      <td><input type="number" data-f="other" data-i="${idx}" value="${row.other}" min="0" step="0.5"></td>
-      <td class="pct"><input type="number" data-f="pct" data-i="${idx}" value="${Number(row.pct) || 0}" min="0" max="100" step="5" ${!isAdmin?"disabled":""}></td>
+      <td><input type="text" data-f="name" data-i="${idx}" value="${esc(row.name)}" class="row-name-input" ${isLocked ? "disabled" : ""}></td>
+      <td><select data-f="role" data-i="${idx}" ${isLocked ? "disabled" : ""}>${optionValues.map(r=>`<option value="${r}" ${r===row.role?"selected":""}>${r}</option>`).join("")}</select></td>
+      <td><input type="number" data-f="ph"    data-i="${idx}" value="${row.ph}"    min="0" step="0.5" ${isLocked ? "disabled" : ""}></td>
+      <td><input type="number" data-f="al"    data-i="${idx}" value="${row.al}"    min="0" step="0.5" ${isLocked ? "disabled" : ""}></td>
+      <td><input type="number" data-f="other" data-i="${idx}" value="${row.other}" min="0" step="0.5" ${isLocked ? "disabled" : ""}></td>
+      <td class="pct"><input type="number" data-f="pct" data-i="${idx}" value="${Number(row.pct) || 0}" min="0" max="100" step="5" ${(!isAdmin || isLocked)?"disabled":""}></td>
       <td class="avail">${avail}</td>
-      <td><input type="text" data-f="notes" data-i="${idx}" value="${esc(row.notes)}" placeholder="—" ${!isAdmin?"disabled":""}></td>
-      <td>${isAdmin?`<button class="ic-btn" data-rm="${idx}" title="Remove">✕</button>`:""}</td>`;
+      <td><input type="text" data-f="notes" data-i="${idx}" value="${esc(row.notes)}" placeholder="—" ${(!isAdmin || isLocked)?"disabled":""}></td>
+      <td>${isAdmin && !isLocked?`<button class="ic-btn" data-rm="${idx}" title="Remove">✕</button>`:""}</td>`;
     body.appendChild(tr);
   });
 
@@ -605,6 +884,8 @@ function onField(e) {
 }
 
 document.getElementById("addRowBtn").addEventListener("click", () => {
+  const { rosterEditable } = getSubmissionFieldState(getSelectedSprintInfo());
+  if (!rosterEditable) return;
   rosterRows.push({ name:"", role:getDefaultRoleName(), ph:0, al:0, other:0, pct:0, notes:"" });
   renderRoster();
 });
@@ -736,6 +1017,8 @@ async function exportAllTeams() {
   // Summary sheet - all teams
   const summarySheet = submissions.map(s => ({
     'Team': s.Team, 'Sprint': s.SprintNo, 'PI': s.PI,
+     'Sprint Goal': s.SprintGoal ?? '', 'Goals Achieved': s.GoalsAchieved ?? '',
+     'Objectives': Array.isArray(s.Objectives) ? s.Objectives.join(' | ') : '',
     'Team Size': s.TeamSize, 'Total Days': r1(s.TotalDays),
     'Sprint Overhead': r1(s.SprintOverhead), 'Sprint Capacity': r1(s.SprintCapacity),
     'Dev Days': r1(s.DevCapacityDays), 'Test Days': r1(s.TestCapacityDays),
@@ -789,6 +1072,9 @@ document.getElementById("submitBtn").addEventListener("click", async () => {
     submittedDate: TODAY,
     submittedBy:   `${CURRENT_USER.name} (${CURRENT_USER.email})`,
     submittedRole: CURRENT_USER.role,
+    SprintGoal:       document.getElementById("sprintGoalInput").value,
+    GoalsAchieved:    document.getElementById("goalsAchievedInput").value,
+    Objectives:       normalizeObjectives(objectiveValues),
     TeamSize:         kpis.teamSize,
     TotalDays:        r1(kpis.totalDays),
     SprintOverhead:   r1(kpis.overhead),
@@ -819,6 +1105,19 @@ document.getElementById("submitBtn").addEventListener("click", async () => {
 });
 
 renderRoster();
+document.getElementById("addObjectiveBtn").addEventListener("click", () => {
+  const { objectivesEditable } = getSubmissionFieldState(getSelectedSprintInfo());
+  if (!objectivesEditable) return;
+  objectiveValues.push("");
+  renderObjectives();
+});
+
+// Add listeners to update Goals Achieved color when values change
+document.getElementById("sprintGoalInput").addEventListener("input", updateGoalsAchievedColor);
+document.getElementById("goalsAchievedInput").addEventListener("input", updateGoalsAchievedColor);
+
+setSubmissionMeta(null);
+syncSubmissionFieldState();
 checkBackendConnectivity();
 </script>
 </body>

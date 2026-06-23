@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sprint Calendar Admin - Sprint Capacity Collector</title>
+  <title>Sprint Calendar Admin - Sprint Planner</title>
   <link rel="stylesheet" href="/admin-sprint-calendar.css">
 </head>
 <body>
@@ -210,11 +210,11 @@ function calcDays(start, end) {
 }
 
 function getSprintStatus(start, end) {
-  const now = new Date();
-  const s = new Date(start);
-  const e = new Date(end);
-  if (now < s) return "Upcoming";
-  if (now > e) return "Closed";
+  const today = toUtcDateKey(new Date());
+  const startKey = toUtcDateKey(start);
+  const endKey = toUtcDateKey(end);
+  if (today < startKey) return "Upcoming";
+  if (today > endKey) return "Closed";
   return "Active";
 }
 

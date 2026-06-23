@@ -75,7 +75,8 @@ async function upsertSubmission(req, res) {
       projectKey: req.body?.ProjectKey,
       sprintNo: req.body?.SprintNo
     });
-    return res.status(500).json({ success: false, error: error.message });
+    const statusCode = error.statusCode || (error.name === "ValidationError" ? 400 : 500);
+    return res.status(statusCode).json({ success: false, error: error.message });
   }
 }
 
