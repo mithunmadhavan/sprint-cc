@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sprint Calendar Admin - Sprint Capacity Collector</title>
+  <style>
+    :root {
+      --ink:#1a2230; --ink-soft:#4a5568; --paper:#f7f8fa; --card:#ffffff;
+      --line:#e2e5eb; --accent:#c4501f; --accent-soft:#fbe9e1;
+      --green:#1f6f4f; --green-soft:#e3f3ec;
+      --blue:#1d4ed8; --warn:#b45309; --warn-soft:#fef3e0;
+      --admin:#6d28d9; --admin-soft:#f1eafe;
+      --mono:'SF Mono','Roboto Mono',Consolas,monospace;
+    }
+    *{box-sizing:border-box;}
+    body{margin:0;font-family:-apple-system,'Segoe UI',Inter,Arial,sans-serif;background:var(--paper);color:var(--ink);-webkit-font-smoothing:antialiased;}
+    .wrap{max-width:1280px;margin:0 auto;padding:28px 24px 40px;}
+    .userbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;font-size:12px;color:var(--ink-soft);}
+    .userbar .nav{display:flex;gap:16px;}
+    .nav-link{text-decoration:none;color:var(--blue);cursor:pointer;font-weight:600;}
+    .nav-link:hover{text-decoration:underline;}
+
+    .head{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid var(--ink);padding-bottom:16px;margin-bottom:22px;flex-wrap:wrap;gap:12px;}
+    .head h1{font-size:26px;margin:0 0 4px;letter-spacing:-.02em;font-weight:800;}
+    .head .sub{color:var(--ink-soft);font-size:13.5px;margin:0;}
+    .badge{font-family:var(--mono);font-size:10px;font-weight:700;background:var(--admin-soft);color:var(--admin);padding:5px 10px;border-radius:4px;letter-spacing:.04em;}
+
+    .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:22px 24px;margin-bottom:20px;}
+    .card h2{font-size:15px;text-transform:uppercase;letter-spacing:.06em;margin:0 0 16px;color:var(--ink);}
+
+    .filter-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px;}
+    label{display:block;font-size:12px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;}
+    input[type=text],input[type=date],input[type=number]{width:100%;padding:10px 12px;font-size:14px;border:1.5px solid var(--line);border-radius:7px;background:#fff;color:var(--ink);}
+    input:focus{outline:none;border-color:var(--ink);}
+
+    .btn{border:none;border-radius:8px;padding:10px 16px;font-size:13.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;}
+    .btn-primary{background:var(--ink);color:#fff;}
+    .btn-primary:hover{background:#000;}
+    .btn-secondary{background:var(--paper);border:1.5px solid var(--line);color:var(--ink-soft);}
+    .btn-secondary:hover{border-color:var(--ink);}
+    .btn-danger{background:#fef2f2;color:#b91c1c;border:1.5px solid #fca5a5;}
+    .btn-danger:hover{background:#fee2e2;}
+    .btn-small{padding:6px 10px;font-size:11px;}
+
+    .tbl-scroll{overflow-x:auto;border:1px solid var(--line);border-radius:10px;margin-bottom:14px;}
+    table{border-collapse:collapse;width:100%;min-width:900px;font-size:13px;}
+    thead tr{background:var(--ink);color:#fff;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;}
+    thead th{padding:10px;text-align:left;font-weight:700;}
+    tbody td{padding:10px;border-bottom:1px solid var(--line);vertical-align:middle;}
+    tbody tr:nth-child(even){background:#fafbfc;}
+    tbody tr:hover{background:#f0f2f6;}
+
+    .modal{display:none;position:fixed;inset:0;background:rgba(26,34,48,.7);z-index:99;align-items:center;justify-content:center;}
+    .modal.show{display:flex;}
+    .modal-content{background:#fff;border-radius:12px;padding:30px;width:90%;max-width:500px;max-height:90vh;overflow-y:auto;}
+    .modal-header{font-size:16px;font-weight:700;margin-bottom:20px;color:var(--ink);}
+    .modal-footer{display:flex;justify-content:flex-end;gap:10px;margin-top:20px;}
+
+    .status-msg{font-size:13px;padding:10px 14px;border-radius:7px;margin-bottom:12px;display:none;}
+    .status-msg.show{display:block;}
+    .status-msg.ok{background:var(--green-soft);color:var(--green);border:1px solid #b9e3cd;}
+    .status-msg.err{background:#fef2f2;color:#b91c1c;border:1px solid #fca5a5;}
+
+    .form-group{margin-bottom:14px;}
+    .form-group label{margin-bottom:6px;}
+    .form-group input{width:100%;}
+
+    .center{text-align:center;}
+    .loading{color:var(--ink-soft);font-size:12px;}
+  </style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="userbar">
+    <div class="nav">
+      <a href="/" class="nav-link">← Back to App</a>
+    </div>
+    <div style="font-size:11px;color:var(--ink-soft);">
+      <a href="#" id="signOutBtn" class="nav-link" style="color:var(--ink-soft);">Sign out</a>
+    </div>
+  </div>
+
+  <div class="head">
+    <div>
+      <h1>Sprint Calendar Admin</h1>
+      <p class="sub">Manage sprint dates and PI assignments</p>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="card">
+    <h2>Search & Filter</h2>
+    <div class="filter-row">
+      <div>
+        <label for="filterSprint">Sprint Name</label>
+        <input type="text" id="filterSprint" placeholder="e.g., 35.1">
+      </div>
+      <div>
+        <label for="filterPI">PI</label>
+        <input type="text" id="filterPI" placeholder="e.g., 35">
+      </div>
+      <div>
+        <label for="filterStartFrom">Start Date From</label>
+        <input type="date" id="filterStartFrom">
+      </div>
+      <div>
+        <label for="filterStartTo">Start Date To</label>
+        <input type="date" id="filterStartTo">
+      </div>
+      <div>
+        <label for="filterEndFrom">End Date From</label>
+        <input type="date" id="filterEndFrom">
+      </div>
+      <div>
+        <label for="filterEndTo">End Date To</label>
+        <input type="date" id="filterEndTo">
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;">
+      <button class="btn btn-primary" id="filterBtn">🔍 Filter</button>
+      <button class="btn btn-secondary" id="clearFilterBtn">Clear</button>
+      <button class="btn btn-primary" id="addSprintBtn">+ Add Sprint</button>
+    </div>
+  </div>
+
+  <!-- Status message -->
+  <div class="status-msg" id="statusMsg"></div>
+
+  <!-- Sprints Table -->
+  <div class="card">
+    <h2>Sprint Calendar Entries</h2>
+    <div class="tbl-scroll">
+      <table id="sprintsTable">
+        <thead>
+          <tr>
+            <th>Sprint</th>
+            <th>PI</th>
+            <th>Start Date</th>
+            <th>End Date</th>
+            <th>Duration</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="sprintsBody">
+          <tr><td colspan="7" class="center loading">Loading sprints...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Add/Edit Sprint Modal -->
+<div class="modal" id="sprintModal">
+  <div class="modal-content">
+    <div class="modal-header" id="modalTitle">Add Sprint</div>
+    <div class="status-msg" id="modalStatusMsg"></div>
+    <form id="sprintForm">
+      <div class="form-group">
+        <label for="formSprint">Sprint Name *</label>
+        <input type="text" id="formSprint" required placeholder="e.g., 35.1">
+      </div>
+      <div class="form-group">
+        <label for="formPI">PI *</label>
+        <input type="text" id="formPI" required placeholder="e.g., 35">
+      </div>
+      <div class="form-group">
+        <label for="formStart">Start Date *</label>
+        <input type="date" id="formStart" required>
+      </div>
+      <div class="form-group">
+        <label for="formEnd">End Date *</label>
+        <input type="date" id="formEnd" required>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="cancelBtn">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+const API_BASE = window.location.protocol === "file:" ? "http://localhost:3000" : "";
+let sprints = [];
+let currentEditId = null;
+let CURRENT_USER = null;
+
+// Auth check
+function checkAuth() {
+  const user = JSON.parse(sessionStorage.getItem("sc_user") || "null");
+  if (!user || user.role !== "admin") {
+    alert("Admin access required");
+    window.location.href = "/";
+    return false;
+  }
+  CURRENT_USER = user;
+  return true;
+}
+
+// Date formatting
+function fmtDate(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function calcDays(start, end) {
+  const s = new Date(start);
+  const e = new Date(end);
+  return Math.ceil((e - s) / (1000 * 60 * 60 * 24)) + 1;
+}
+
+function getSprintStatus(start, end) {
+  const now = new Date();
+  const s = new Date(start);
+  const e = new Date(end);
+  if (now < s) return "Upcoming";
+  if (now > e) return "Closed";
+  return "Active";
+}
+
+// Load sprints from API
+async function loadSprints() {
+  const tbody = document.getElementById("sprintsBody");
+  tbody.innerHTML = '<tr><td colspan="7" class="center loading">Loading...</td></tr>';
+
+  try {
+    const params = new URLSearchParams({
+      sprint: document.getElementById("filterSprint").value,
+      pi: document.getElementById("filterPI").value,
+      startDateFrom: document.getElementById("filterStartFrom").value,
+      startDateTo: document.getElementById("filterStartTo").value,
+      endDateFrom: document.getElementById("filterEndFrom").value,
+      endDateTo: document.getElementById("filterEndTo").value,
+    });
+
+    const resp = await fetch(`${API_BASE}/api/sprints?${params}`);
+    if (!resp.ok) throw new Error("Failed to load sprints");
+
+    const data = await resp.json();
+    sprints = data.sprints || [];
+
+    if (sprints.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" class="center" style="color:var(--ink-soft);padding:20px;">No sprints found</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = sprints.map(s => `
+      <tr>
+        <td><strong>${s.sprint}</strong></td>
+        <td>PI ${s.pi}</td>
+        <td>${fmtDate(s.start)}</td>
+        <td>${fmtDate(s.end)}</td>
+        <td>${calcDays(s.start, s.end)} days</td>
+        <td>
+          <span style="padding:3px 8px;border-radius:4px;font-size:11px;font-weight:700;
+            ${
+              getSprintStatus(s.start, s.end) === "Active"
+                ? "background:var(--green-soft);color:var(--green);"
+                : getSprintStatus(s.start, s.end) === "Upcoming"
+                ? "background:var(--paper);border:1px solid var(--line);color:var(--ink-soft);"
+                : "background:#f3f3f3;color:var(--ink-soft);"
+            }">
+            ${getSprintStatus(s.start, s.end)}
+          </span>
+        </td>
+        <td style="white-space:nowrap;">
+          <button class="btn btn-small btn-secondary" onclick="editSprint('${s._id}')">Edit</button>
+          <button class="btn btn-small btn-danger" onclick="deleteSprint('${s._id}')">Delete</button>
+        </td>
+      </tr>
+    `).join("");
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="7" style="color:#b91c1c;padding:20px;text-align:center;">${e.message}</td></tr>`;
+  }
+}
+
+// Edit sprint
+function editSprint(id) {
+  const sprint = sprints.find(s => s._id === id);
+  if (!sprint) return;
+
+  currentEditId = id;
+  document.getElementById("modalTitle").textContent = `Edit Sprint: ${sprint.sprint}`;
+  document.getElementById("formSprint").value = sprint.sprint;
+  document.getElementById("formPI").value = sprint.pi;
+  document.getElementById("formStart").value = sprint.start.slice(0, 10);
+  document.getElementById("formEnd").value = sprint.end.slice(0, 10);
+  document.getElementById("sprintModal").classList.add("show");
+}
+
+// Delete sprint
+async function deleteSprint(id) {
+  if (!confirm("Delete this sprint? This cannot be undone.")) return;
+
+  try {
+    const resp = await fetch(`${API_BASE}/api/sprints/${id}`, { method: "DELETE" });
+    if (!resp.ok) throw new Error("Delete failed");
+
+    showStatus("✓ Sprint deleted", "ok");
+    loadSprints();
+  } catch (e) {
+    showStatus(`✕ ${e.message}`, "err");
+  }
+}
+
+// Show add sprint modal
+document.getElementById("addSprintBtn").addEventListener("click", () => {
+  currentEditId = null;
+  document.getElementById("modalTitle").textContent = "Add New Sprint";
+  document.getElementById("sprintForm").reset();
+  document.getElementById("sprintModal").classList.add("show");
+});
+
+// Cancel modal
+document.getElementById("cancelBtn").addEventListener("click", () => {
+  document.getElementById("sprintModal").classList.remove("show");
+});
+
+// Save sprint (add/edit)
+document.getElementById("sprintForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+
+  const payload = {
+    sprint: document.getElementById("formSprint").value,
+    pi: document.getElementById("formPI").value,
+    start: document.getElementById("formStart").value,
+    end: document.getElementById("formEnd").value,
+  };
+
+  try {
+    const url = currentEditId ? `${API_BASE}/api/sprints/${currentEditId}` : `${API_BASE}/api/sprints`;
+    const method = currentEditId ? "PUT" : "POST";
+
+    const resp = await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.error || "Save failed");
+    }
+
+    document.getElementById("sprintModal").classList.remove("show");
+    showStatus(currentEditId ? "✓ Sprint updated" : "✓ Sprint created", "ok");
+    loadSprints();
+  } catch (e) {
+    document.getElementById("modalStatusMsg").textContent = `✕ ${e.message}`;
+    document.getElementById("modalStatusMsg").className = "status-msg show err";
+  }
+});
+
+// Filter
+document.getElementById("filterBtn").addEventListener("click", loadSprints);
+document.getElementById("clearFilterBtn").addEventListener("click", () => {
+  document.getElementById("filterSprint").value = "";
+  document.getElementById("filterPI").value = "";
+  document.getElementById("filterStartFrom").value = "";
+  document.getElementById("filterStartTo").value = "";
+  document.getElementById("filterEndFrom").value = "";
+  document.getElementById("filterEndTo").value = "";
+  loadSprints();
+});
+
+// Show status
+function showStatus(msg, type) {
+  const el = document.getElementById("statusMsg");
+  el.textContent = msg;
+  el.className = `status-msg show ${type}`;
+  setTimeout(() => el.classList.remove("show"), 3000);
+}
+
+// Sign out
+document.getElementById("signOutBtn").addEventListener("click", () => {
+  sessionStorage.removeItem("sc_user");
+  window.location.href = "/";
+});
+
+// Boot
+if (checkAuth()) {
+  loadSprints();
+}
+</script>
+
+</body>
+</html>
+

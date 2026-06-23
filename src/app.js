@@ -38,6 +38,14 @@ app.get("/getEnv", (req, res) => {
   return res.status(200).send(environment);
 })
 
+app.get("/admin/sprint-calendar", (req, res) => {
+  const adminPagePath = path.join(projectRoot, "admin", "sprint-calendar.html");
+  if (!fs.existsSync(adminPagePath)) {
+    return res.status(404).send("Sprint calendar admin page not found");
+  }
+  return res.sendFile(adminPagePath);
+});
+
 app.use("/api", correlationId, requestLogger, apiRoutes);
 
 module.exports = app;

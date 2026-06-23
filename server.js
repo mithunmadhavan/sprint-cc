@@ -8,7 +8,6 @@ if (!process.env.VERCEL) {
 const app = require("./src/app");
 const logger = require("./src/utils/logger");
 
-
 if (process.env.VERCEL !== "1") {
   const port = Number(process.env.PORT) || 3000;
   app.listen(port, () => {

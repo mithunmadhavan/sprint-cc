@@ -352,20 +352,7 @@ const TEAMS = [
   { name:"Renault",      key:"REN"  }
 ];
 
-const SPRINT_CALENDAR = [
-  { sprint:"35.1",  pi:"35", start:"2026-07-08", end:"2026-07-21" },
-  { sprint:"35.2",  pi:"35", start:"2026-07-22", end:"2026-08-04" },
-  { sprint:"35.3",  pi:"35", start:"2026-08-05", end:"2026-08-18" },
-  { sprint:"35.4",  pi:"35", start:"2026-08-19", end:"2026-09-01" },
-  { sprint:"35.5",  pi:"35", start:"2026-09-02", end:"2026-09-15" },
-  { sprint:"35.IP", pi:"35", start:"2026-09-16", end:"2026-09-29" },
-  { sprint:"36.1",  pi:"36", start:"2026-09-30", end:"2026-10-13" },
-  { sprint:"36.2",  pi:"36", start:"2026-10-14", end:"2026-10-27" },
-  { sprint:"36.3",  pi:"36", start:"2026-10-28", end:"2026-11-10" },
-  { sprint:"36.4",  pi:"36", start:"2026-11-11", end:"2026-11-24" },
-  { sprint:"36.5",  pi:"36", start:"2026-11-25", end:"2026-12-08" },
-  { sprint:"36.IP", pi:"36", start:"2026-12-09", end:"2026-12-22" }
-];
+let SPRINT_CALENDAR = [];
 
 const ROLES = ["Full Stack Dev","Front End Dev","Back End Dev","Tester","Architect","Scrum Master","Product Owner"];
 const NON_TEAM_ROLES = ["Architect","Scrum Master","Product Owner"];
@@ -458,32 +445,44 @@ document.getElementById("signOutBtn").addEventListener("click", () => {
    BOOT
 ═══════════════════════════════════════════════════════════════════ */
 function bootApp() {
-  document.getElementById("loginGate").style.display  = "none";
-  document.getElementById("appWrap").style.display    = "block";
+   document.getElementById("loginGate").style.display  = "none";
+   document.getElementById("appWrap").style.display    = "block";
 
-  const initials = CURRENT_USER.name.split(" ").map(s=>s[0]).slice(0,2).join("").toUpperCase();
-  document.getElementById("userAvatar").textContent      = initials;
-  document.getElementById("userDisplayName").textContent = `${CURRENT_USER.name} (${CURRENT_USER.email})`;
-  const pill = document.getElementById("roleBadge");
-  pill.textContent = CURRENT_USER.role.toUpperCase();
-  pill.className   = "role-pill " + CURRENT_USER.role;
-  document.getElementById("metaUser").textContent = `${CURRENT_USER.name} (${CURRENT_USER.email})`;
-  document.getElementById("roToday").textContent  = fmtDate(TODAY);
-  document.getElementById("metaDate").textContent = fmtDate(TODAY);
+   const initials = CURRENT_USER.name.split(" ").map(s=>s[0]).slice(0,2).join("").toUpperCase();
+   document.getElementById("userAvatar").textContent      = initials;
+   document.getElementById("userDisplayName").textContent = `${CURRENT_USER.name} (${CURRENT_USER.email})`;
+   const pill = document.getElementById("roleBadge");
+   pill.textContent = CURRENT_USER.role.toUpperCase();
+   pill.className   = "role-pill " + CURRENT_USER.role;
+   document.getElementById("metaUser").textContent = `${CURRENT_USER.name} (${CURRENT_USER.email})`;
+   document.getElementById("roToday").textContent  = fmtDate(TODAY);
+   document.getElementById("metaDate").textContent = fmtDate(TODAY);
 
-  const isAdmin = CURRENT_USER.role === "admin";
-  document.getElementById("addRowBtn").style.display    = "inline-block";
-  document.getElementById("exportBtn").style.display    = isAdmin ? "inline-flex"  : "none";
-  document.getElementById("adminEditBadge").style.display = isAdmin ? "inline-block" : "none";
-  document.getElementById("normalNote").style.display   = isAdmin ? "none" : "block";
-  document.getElementById("allTeamsCard").style.display = isAdmin ? "block" : "none";
+   const isAdmin = CURRENT_USER.role === "admin";
+   document.getElementById("addRowBtn").style.display    = "inline-block";
+   document.getElementById("exportBtn").style.display    = isAdmin ? "inline-flex"  : "none";
+   document.getElementById("adminEditBadge").style.display = isAdmin ? "inline-block" : "none";
+   document.getElementById("normalNote").style.display   = isAdmin ? "none" : "block";
+   document.getElementById("allTeamsCard").style.display = isAdmin ? "block" : "none";
 
-  initTeamDropdown();
-  populateSprintDropdown();
-  updateReadout();
-  renderRoster();
-  if (isAdmin) renderAllTeams();
-}
+   // Add admin link if admin
+   if (isAdmin) {
+     const adminLink = document.createElement("a");
+     adminLink.href = "/admin/sprint-calendar";
+     adminLink.className = "nav-link";
+     adminLink.style.cssText = "font-size:12px;color:var(--admin);font-weight:600;margin-left:10px;";
+     adminLink.textContent = "⚙ Sprint Calendar Admin";
+     document.querySelector(".userbar").appendChild(adminLink);
+   }
+
+   loadSprintCalendar().then(() => {
+     initTeamDropdown();
+     populateSprintDropdown();
+     updateReadout();
+     renderRoster();
+     if (isAdmin) renderAllTeams();
+   });
+ }
 
 /* ═══════════════════════════════════════════════════════════════════
    DROPDOWNS
@@ -582,24 +581,42 @@ async function spRead(teamKey, sprintNo) {
 }
 
 async function spUpsert(payload) {
-  try {
-    showLoading("Saving to backend…");
-    const json = await apiJson("/api/submissions/upsert", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-    hideLoading();
-    return json;
-  } catch(e) {
-    hideLoading();
-    return { success: false, error: String(e) };
-  }
-}
+   try {
+     showLoading("Saving to backend…");
+     const json = await apiJson("/api/submissions/upsert", {
+       method: "POST",
+       headers: { "Content-Type": "application/json" },
+       body: JSON.stringify(payload)
+     });
+     hideLoading();
+     return json;
+   } catch(e) {
+     hideLoading();
+     return { success: false, error: String(e) };
+   }
+ }
 
-/* ═══════════════════════════════════════════════════════════════════
-   ROSTER TABLE
-═══════════════════════════════════════════════════════════════════ */
+async function loadSprintCalendar() {
+   try {
+     const json = await apiJson("/api/sprints", { cache: "no-store" });
+     if (json.ok && json.sprints) {
+       SPRINT_CALENDAR = json.sprints.map(s => ({
+         sprint: s.sprint,
+         pi: s.pi,
+         start: s.start.slice(0, 10),
+         end: s.end.slice(0, 10)
+       }));
+     }
+   } catch(e) {
+     // Fallback to empty calendar if API fails
+     console.error("Failed to load sprint calendar:", e);
+     SPRINT_CALENDAR = [];
+   }
+ }
+
+ /* ═══════════════════════════════════════════════════════════════════
+    ROSTER TABLE
+ ═══════════════════════════════════════════════════════════════════ */
 function roleSlug(r) { return r.toLowerCase().replace(/\s+/g,""); }
 function availDays(row) {
   const leave = (Number(row.ph)||0) + (Number(row.al)||0) + (Number(row.other)||0);

@@ -56,7 +56,7 @@ When deployed, `index.html` calls same-origin APIs (`/api/*`) automatically.
 API logs are JSON lines and include `correlationId`, method, path, status, and duration.
 Responses include `X-Correlation-Id`, and clients can pass `x-correlation-id`.
 
-## 4) GitHub Actions + Vercel deployment
+## 5) GitHub Actions + Vercel deployment
 
 Workflow: `.github/workflows/deploy-vercel.yml`
 
@@ -77,7 +77,7 @@ Add these in each GitHub Environment (for example `development`, `staging`, `pro
 - Secret: `VERCEL_ORG_ID`
 - Secret: `VERCEL_PROJECT_ID`
 
-## 6) Optional test run
+## 7) Optional test run
 
 ```bash
 npm test

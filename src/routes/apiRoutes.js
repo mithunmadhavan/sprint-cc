@@ -1,5 +1,6 @@
 const express = require("express");
 const submissionController = require("../controllers/submissionController");
+const sprintController = require("../controllers/sprintController");
 
 const router = express.Router();
 
@@ -24,6 +25,13 @@ router.get("/env-check", (_req, res) => {
 router.get("/submissions", submissionController.listSubmissions);
 router.get("/submissions/:teamKey/:sprintNo", submissionController.getSubmission);
 router.post("/submissions/upsert", submissionController.upsertSubmission);
+
+// Sprint calendar management
+router.get("/sprints", sprintController.listSprints);
+router.get("/sprints/:id", sprintController.getSprint);
+router.post("/sprints", sprintController.createSprint);
+router.put("/sprints/:id", sprintController.updateSprint);
+router.delete("/sprints/:id", sprintController.deleteSprint);
 
 module.exports = router;
 
