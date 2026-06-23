@@ -150,6 +150,26 @@ test("backend manages sprints with CRUD, numeric PI, and next-PI generation", as
    assert.equal(update.status, 200);
    assert.equal(update.body.sprint.pi, 37);
    assert.equal(update.body.sprint.start, "2026-10-02T00:00:00.000Z");
+   assert.equal(update.body.sprint.end, "2026-10-15T00:00:00.000Z");
+
+   const afterStartOnlyEdit = await request(app).get("/api/sprints?pi=37");
+   assert.equal(afterStartOnlyEdit.status, 200);
+   const sprint372 = afterStartOnlyEdit.body.sprints.find((s) => s.sprint === "37.2");
+   assert.equal(sprint372.start, "2026-10-16T00:00:00.000Z");
+   assert.equal(sprint372.end, "2026-10-29T00:00:00.000Z");
+
+   const updateWithStartAndEnd = await request(app)
+      .put(`/api/sprints/${sprint372._id}`)
+      .send({ start: "2026-10-20", end: "2026-10-25" });
+   assert.equal(updateWithStartAndEnd.status, 200);
+   assert.equal(updateWithStartAndEnd.body.sprint.start, "2026-10-20T00:00:00.000Z");
+   assert.equal(updateWithStartAndEnd.body.sprint.end, "2026-10-25T00:00:00.000Z");
+
+   const afterStartEndEdit = await request(app).get("/api/sprints?pi=37");
+   assert.equal(afterStartEndEdit.status, 200);
+   const sprint373 = afterStartEndEdit.body.sprints.find((s) => s.sprint === "37.3");
+   assert.equal(sprint373.start, "2026-10-26T00:00:00.000Z");
+   assert.equal(sprint373.end, "2026-11-08T00:00:00.000Z");
 
    const singleDeleteBlocked = await request(app).delete(`/api/sprints/${editTarget._id}`);
    assert.equal(singleDeleteBlocked.status, 400);
@@ -368,3 +388,41 @@ test("backend enforces delete-PI rules and removes all PI sprints", async (t) =>
    assert.equal(stillBlocked.status, 400);
    assert.match(stillBlocked.body.error, /submission/i);
 });
+
+test("backend blocks sprint edit/delete and PI delete when PI starts today", async (t) => {
+   mongo = await MongoMemoryServer.create();
+   process.env.MONGO_URI = mongo.getUri();
+   process.env.VERCEL = "1";
+
+   app = require("../server");
+
+   t.after(async () => {
+      await closeConnections();
+   });
+
+   const today = new Date().toISOString().slice(0, 10);
+   const inTwoWeeks = new Date(Date.now() + 13 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+   const first = await request(app).post("/api/sprints").send({
+      sprint: "60.1",
+      pi: 60,
+      start: today,
+      end: inTwoWeeks,
+   });
+   assert.equal(first.status, 201);
+
+   const editBlocked = await request(app)
+      .put(`/api/sprints/${first.body.sprint._id}`)
+      .send({ start: today });
+   assert.equal(editBlocked.status, 400);
+   assert.match(editBlocked.body.error, /already started/i);
+
+   const sprintDeleteBlocked = await request(app).delete(`/api/sprints/${first.body.sprint._id}`);
+   assert.equal(sprintDeleteBlocked.status, 400);
+   assert.match(sprintDeleteBlocked.body.error, /already started/i);
+
+   const piDeleteBlocked = await request(app).delete("/api/sprints/pi/60");
+   assert.equal(piDeleteBlocked.status, 400);
+   assert.match(piDeleteBlocked.body.error, /already started/i);
+});
+

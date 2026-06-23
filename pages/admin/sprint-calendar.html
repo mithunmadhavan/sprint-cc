@@ -61,6 +61,10 @@
     .status-msg.show{display:block;}
     .status-msg.ok{background:var(--green-soft);color:var(--green);border:1px solid #b9e3cd;}
     .status-msg.err{background:#fef2f2;color:#b91c1c;border:1px solid #fca5a5;}
+    .edit-warning{display:none;margin:0 0 12px;padding:10px 12px;border-radius:7px;background:var(--warn-soft);color:var(--warn);border:1px solid #f7d8a8;font-size:12px;}
+    .edit-warning.show{display:block;}
+    .save-reflow-hint{display:none;align-self:center;margin-right:auto;font-size:11px;color:var(--warn);font-weight:700;letter-spacing:.01em;}
+    .save-reflow-hint.show{display:inline-flex;align-items:center;gap:4px;}
 
     .form-group{margin-bottom:14px;}
     .form-group label{margin-bottom:6px;}
@@ -150,6 +154,9 @@
   <div class="modal-content">
     <div class="modal-header" id="modalTitle">Edit Sprint</div>
     <div class="status-msg" id="modalStatusMsg"></div>
+    <p class="edit-warning" id="editWarningBanner">
+      Warning: editing sprint dates will reflow all following sprint dates. Editing is blocked once PI start (X.1) is today or in the past.
+    </p>
     <form id="sprintForm">
       <div class="form-group">
         <label for="formSprint">Sprint Name *</label>
@@ -168,6 +175,7 @@
         <input type="date" id="formEnd" required>
       </div>
       <div class="modal-footer">
+        <span class="save-reflow-hint" id="saveReflowHint" aria-live="polite">⚠ Reflows following sprint dates</span>
         <button type="button" class="btn btn-secondary" id="cancelBtn">Cancel</button>
         <button type="submit" class="btn btn-primary">Save</button>
       </div>
@@ -278,6 +286,14 @@ function getSprintStatus(start, end) {
   return "Active";
 }
 
+function toUtcDateKey(value) {
+  return new Date(value).toISOString().slice(0, 10);
+}
+
+function isTodayOrPast(value) {
+  return toUtcDateKey(value) <= toUtcDateKey(new Date());
+}
+
 // Load sprints from API
 async function loadSprints() {
   const tbody = document.getElementById("sprintsBody");
@@ -343,7 +359,19 @@ function editSprint(id) {
   const sprint = sprints.find(s => s._id === id);
   if (!sprint) return;
 
+  const piSprints = sprints.filter((s) => Number(s.pi) === Number(sprint.pi));
+  const piStart = piSprints.find((s) => `${s.pi}.1` === s.sprint)
+    || piSprints.sort((a, b) => new Date(a.start) - new Date(b.start))[0];
+  if (piStart && isTodayOrPast(piStart.start)) {
+    showStatus(`✕ Cannot edit sprint ${sprint.sprint}: PI ${sprint.pi} has already started`, "err");
+    return;
+  }
+
   currentEditId = id;
+  document.getElementById("modalStatusMsg").className = "status-msg";
+  document.getElementById("modalStatusMsg").textContent = "";
+  document.getElementById("editWarningBanner").classList.add("show");
+  document.getElementById("saveReflowHint").classList.add("show");
   document.getElementById("modalTitle").textContent = `Edit Sprint: ${sprint.sprint}`;
   document.getElementById("formSprint").value = sprint.sprint;
   document.getElementById("formPI").value = sprint.pi;
@@ -499,6 +527,8 @@ document.getElementById("confirmDeletePiBtn").addEventListener("click", () => {
 
 // Cancel modal
 document.getElementById("cancelBtn").addEventListener("click", () => {
+  document.getElementById("editWarningBanner").classList.remove("show");
+  document.getElementById("saveReflowHint").classList.remove("show");
   document.getElementById("sprintModal").classList.remove("show");
 });
 
@@ -517,6 +547,7 @@ document.getElementById("sprintForm").addEventListener("submit", async (e) => {
     if (!currentEditId) {
       throw new Error("Only sprint editing is allowed here. Use 'Create New PI'.");
     }
+
     const url = `${API_BASE}/api/sprints/${currentEditId}`;
     const method = "PUT";
 
@@ -532,6 +563,8 @@ document.getElementById("sprintForm").addEventListener("submit", async (e) => {
     }
 
     document.getElementById("sprintModal").classList.remove("show");
+    document.getElementById("editWarningBanner").classList.remove("show");
+    document.getElementById("saveReflowHint").classList.remove("show");
     showStatus("✓ Sprint updated", "ok");
     loadSprints();
   } catch (e) {

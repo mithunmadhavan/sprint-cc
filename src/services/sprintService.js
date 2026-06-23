@@ -20,6 +20,34 @@ function normalizeSprintName(value) {
   return String(value || "").trim();
 }
 
+function sprintDurationDays(start, end) {
+  const days = Math.round((new Date(end) - new Date(start)) / DAY_MS) + 1;
+  return Math.max(1, days);
+}
+
+function sprintOrderInPi(sprintName) {
+  const name = normalizeSprintName(sprintName);
+  const suffix = name.split(".").pop();
+  if (!suffix) return Number.MAX_SAFE_INTEGER;
+  if (/^ip$/i.test(suffix)) return 6;
+  const numeric = Number(suffix);
+  return Number.isInteger(numeric) ? numeric : Number.MAX_SAFE_INTEGER;
+}
+
+function toUtcDateKey(value) {
+  return new Date(value).toISOString().slice(0, 10);
+}
+
+function isTodayOrPast(value) {
+  return toUtcDateKey(value) <= toUtcDateKey(new Date());
+}
+
+async function getPiStartSprint(pi) {
+  const first = await Sprint.findOne({ pi, sprint: `${pi}.1` }).lean();
+  if (first) return first;
+  return Sprint.findOne({ pi }).sort({ start: 1 }).lean();
+}
+
 async function listSprints(filters = {}) {
   const query = {};
 
@@ -89,19 +117,87 @@ async function createSprint(data) {
 async function updateSprint(id, data) {
   const sprint = await Sprint.findById(id);
   if (!sprint) return null;
+
+  const piStartSprint = await getPiStartSprint(sprint.pi);
+  if (piStartSprint && isTodayOrPast(piStartSprint.start)) {
+    const err = new Error(
+      `Cannot edit sprint ${sprint.sprint}: PI ${sprint.pi} has already started`
+    );
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const hasStart = data.start !== undefined && data.start !== null && data.start !== "";
+  const hasEnd = data.end !== undefined && data.end !== null && data.end !== "";
+
+  const originalDuration = sprintDurationDays(sprint.start, sprint.end);
+  const currentPi = sprint.pi;
+  const currentOrder = sprintOrderInPi(sprint.sprint);
   if (data.sprint !== undefined && data.sprint !== null && data.sprint !== "") {
     sprint.sprint = normalizeSprintName(data.sprint);
   }
   if (data.pi !== undefined && data.pi !== null && data.pi !== "") {
     sprint.pi = toPiNumber(data.pi);
   }
-  if (data.start) sprint.start = new Date(data.start);
-  if (data.end) sprint.end = new Date(data.end);
+  if (hasStart) sprint.start = new Date(data.start);
+  if (hasEnd) sprint.end = new Date(data.end);
+
+  // If only start is changed, keep sprint duration stable and recompute end.
+  if (hasStart && !hasEnd) {
+    sprint.end = addDays(new Date(sprint.start), originalDuration - 1);
+  }
+
   sprint.updatedAt = new Date();
-  return sprint.save();
+  await sprint.save();
+
+  // Reflow subsequent sprints whenever schedule dates are edited.
+  if (hasStart || hasEnd) {
+    const candidates = await Sprint.find({
+      $or: [{ pi: { $gt: currentPi } }, { pi: currentPi }],
+    });
+
+    const trailing = candidates
+      .filter((item) => {
+        if (String(item._id) === String(sprint._id)) return false;
+        if (item.pi > currentPi) return true;
+        return sprintOrderInPi(item.sprint) > currentOrder;
+      })
+      .sort((a, b) => {
+        if (a.pi !== b.pi) return a.pi - b.pi;
+        const orderA = sprintOrderInPi(a.sprint);
+        const orderB = sprintOrderInPi(b.sprint);
+        if (orderA !== orderB) return orderA - orderB;
+        return new Date(a.start) - new Date(b.start);
+      });
+
+    let nextStart = addDays(new Date(sprint.end), 1);
+    for (const item of trailing) {
+      const duration = sprintDurationDays(item.start, item.end);
+      item.start = new Date(nextStart);
+      item.end = addDays(new Date(nextStart), duration - 1);
+      item.updatedAt = new Date();
+      // eslint-disable-next-line no-await-in-loop
+      await item.save();
+      nextStart = addDays(new Date(item.end), 1);
+    }
+  }
+
+  return sprint;
 }
 
 async function deleteSprint(id) {
+  const sprint = await Sprint.findById(id);
+  if (!sprint) return null;
+
+  const piStartSprint = await getPiStartSprint(sprint.pi);
+  if (piStartSprint && isTodayOrPast(piStartSprint.start)) {
+    const err = new Error(
+      `Cannot delete sprint ${sprint.sprint}: PI ${sprint.pi} has already started`
+    );
+    err.statusCode = 400;
+    throw err;
+  }
+
   const err = new Error("Single sprint deletion is disabled. Delete the full PI instead.");
   err.statusCode = 400;
   throw err;
@@ -171,17 +267,16 @@ async function createNextPiBatch() {
 
 async function deletePiBatch(piNumber) {
   const pi = toPiNumber(piNumber);
-  const now = new Date();
 
   // 1. PI must exist and its *.1 sprint must not have started
-  const firstSprint = await Sprint.findOne({ pi, sprint: `${pi}.1` }).lean();
+  const firstSprint = await getPiStartSprint(pi);
   if (!firstSprint) {
     const err = new Error(`PI ${pi}: PI not found or missing ${pi}.1 sprint`);
     err.statusCode = 404;
     throw err;
   }
 
-  if (new Date(firstSprint.start) <= now) {
+  if (isTodayOrPast(firstSprint.start)) {
     const err = new Error(`Cannot delete PI ${pi}: PI has already started`);
     err.statusCode = 400;
     throw err;
