@@ -131,6 +131,9 @@ async function deleteSprint(req, res) {
     }
     return res.json({ ok: true, message: "Sprint deleted" });
   } catch (e) {
+    if (e.statusCode === 400) {
+      return res.status(400).json({ error: e.message });
+    }
     logger.error("db-failure", {
       correlationId: req.correlationId,
       method: req.method,
@@ -192,6 +195,32 @@ async function previewNextPi(req, res) {
   }
 }
 
+async function deletePi(req, res) {
+  try {
+    await connectDb(req.correlationId);
+    const piNumber = req.params.piNumber;
+    const result = await sprintService.deletePiBatch(piNumber);
+    return res.json({
+      ok: true,
+      pi: result.pi,
+      deleted: result.deleted,
+      message: `PI ${result.pi} deleted (${result.deleted} sprints removed)`,
+    });
+  } catch (e) {
+    if (e.statusCode === 400 || e.statusCode === 404) {
+      return res.status(e.statusCode).json({ error: e.message });
+    }
+    logger.error("db-failure", {
+      correlationId: req.correlationId,
+      method: req.method,
+      path: req.path,
+      action: "delete-pi",
+      error: e,
+    });
+    return res.status(500).json({ error: "Failed to delete PI" });
+  }
+}
+
 module.exports = {
   listSprints,
   getSprint,
@@ -200,5 +229,6 @@ module.exports = {
   deleteSprint,
   previewNextPi,
   createNextPi,
+  deletePi,
 };
 

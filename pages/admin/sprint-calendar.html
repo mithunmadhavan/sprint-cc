@@ -75,8 +75,8 @@
 <div class="wrap">
   <div class="userbar">
     <div class="nav">
-      <a href="/" class="nav-link">← Back to App</a>
-      <a href="/admin/sprint-roles" class="nav-link">Sprint Roles Admin</a>
+      <a href="/" class="nav-link">Home</a>
+      <a href="/admin" class="nav-link">Admin</a>
     </div>
     <div style="font-size:11px;color:var(--ink-soft);">
       <a href="#" id="signOutBtn" class="nav-link" style="color:var(--ink-soft);">Sign out</a>
@@ -206,12 +206,43 @@
   </div>
 </div>
 
+<!-- Delete PI Confirmation Modal -->
+<div class="modal" id="deletePiModal">
+  <div class="modal-content" style="max-width:760px;">
+    <div class="modal-header" id="deletePiTitle">Delete PI</div>
+    <div class="status-msg" id="deletePiStatusMsg"></div>
+    <p style="margin:0 0 12px;color:var(--ink-soft);font-size:13px;">
+      This action removes all sprint records in the selected PI and cannot be undone.
+    </p>
+    <div class="tbl-scroll" style="margin-bottom:0;">
+      <table>
+        <thead>
+          <tr>
+            <th>Sprint</th>
+            <th>Start</th>
+            <th>End</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="deletePiBody">
+          <tr><td colspan="4" class="center loading">Loading PI details...</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary" id="cancelDeletePiBtn">Cancel</button>
+      <button type="button" class="btn btn-danger" id="confirmDeletePiBtn" disabled>Delete PI</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const API_BASE = window.location.protocol === "file:" ? "http://localhost:3000" : "";
 let sprints = [];
 let currentEditId = null;
 let CURRENT_USER = null;
 let lastPiPreview = null;
+let pendingPiDelete = null;
 
 // Auth check
 function checkAuth() {
@@ -271,7 +302,13 @@ async function loadSprints() {
       return;
     }
 
-    tbody.innerHTML = sprints.map(s => `
+    tbody.innerHTML = sprints.map(s => {
+      const isFirstOfPi = /^\d+\.1$/.test(s.sprint);
+      const notStarted = new Date(s.start) > new Date();
+      const deletePiBtn = (isFirstOfPi && notStarted)
+        ? `<button class="btn btn-small btn-danger" style="margin-left:4px;background:#7c3aed;border-color:#7c3aed;" onclick="openDeletePiModal(${s.pi})" title="Delete all sprints for PI ${s.pi}">Delete PI</button>`
+        : "";
+      return `
       <tr>
         <td><strong>${s.sprint}</strong></td>
         <td>PI ${s.pi}</td>
@@ -292,10 +329,10 @@ async function loadSprints() {
         </td>
         <td style="white-space:nowrap;">
           <button class="btn btn-small btn-secondary" onclick="editSprint('${s._id}')">Edit</button>
-          <button class="btn btn-small btn-danger" onclick="deleteSprint('${s._id}')">Delete</button>
+          ${deletePiBtn}
         </td>
-      </tr>
-    `).join("");
+      </tr>`;
+    }).join("");
   } catch (e) {
     tbody.innerHTML = `<tr><td colspan="7" style="color:#b91c1c;padding:20px;text-align:center;">${e.message}</td></tr>`;
   }
@@ -315,18 +352,64 @@ function editSprint(id) {
   document.getElementById("sprintModal").classList.add("show");
 }
 
-// Delete sprint
-async function deleteSprint(id) {
-  if (!confirm("Delete this sprint? This cannot be undone.")) return;
+// Open delete-PI modal with a fresh PI snapshot from API.
+async function openDeletePiModal(piNumber) {
+  const modal = document.getElementById("deletePiModal");
+  const title = document.getElementById("deletePiTitle");
+  const body = document.getElementById("deletePiBody");
+  const status = document.getElementById("deletePiStatusMsg");
+  const confirmBtn = document.getElementById("confirmDeletePiBtn");
+
+  pendingPiDelete = Number(piNumber);
+  title.textContent = `Delete PI ${pendingPiDelete}`;
+  status.className = "status-msg";
+  status.textContent = "";
+  confirmBtn.disabled = true;
+  body.innerHTML = '<tr><td colspan="4" class="center loading">Loading PI details...</td></tr>';
+  modal.classList.add("show");
 
   try {
-    const resp = await fetch(`${API_BASE}/api/sprints/${id}`, { method: "DELETE" });
-    if (!resp.ok) throw new Error("Delete failed");
+    const resp = await fetch(`${API_BASE}/api/sprints?pi=${encodeURIComponent(pendingPiDelete)}`);
+    const json = await resp.json();
+    if (!resp.ok) throw new Error(json.error || "Failed to load PI details");
 
-    showStatus("✓ Sprint deleted", "ok");
+    const piSprints = (json.sprints || []).sort((a, b) => new Date(a.start) - new Date(b.start));
+    if (piSprints.length === 0) {
+      throw new Error(`PI ${pendingPiDelete} has no sprint records`);
+    }
+
+    body.innerHTML = piSprints.map((s) => `
+      <tr>
+        <td><strong>${s.sprint}</strong></td>
+        <td>${fmtDate(s.start)}</td>
+        <td>${fmtDate(s.end)}</td>
+        <td>${getSprintStatus(s.start, s.end)}</td>
+      </tr>
+    `).join("");
+
+    confirmBtn.disabled = false;
+  } catch (e) {
+    body.innerHTML = `<tr><td colspan="4" style="color:#b91c1c;padding:20px;text-align:center;">${e.message}</td></tr>`;
+  }
+}
+
+// Delete all sprints for a PI after explicit modal confirmation.
+async function deletePi(piNumber) {
+  if (!piNumber) return;
+
+  try {
+    const resp = await fetch(`${API_BASE}/api/sprints/pi/${piNumber}`, { method: "DELETE" });
+    const json = await resp.json();
+    if (!resp.ok) throw new Error(json.error || "Failed to delete PI");
+
+    document.getElementById("deletePiModal").classList.remove("show");
+    pendingPiDelete = null;
+    showStatus(`✓ ${json.message}`, "ok");
     loadSprints();
   } catch (e) {
-    showStatus(`✕ ${e.message}`, "err");
+    const status = document.getElementById("deletePiStatusMsg");
+    status.textContent = `✕ ${e.message}`;
+    status.className = "status-msg show err";
   }
 }
 
@@ -403,6 +486,15 @@ document.getElementById("confirmPiCreateBtn").addEventListener("click", () => {
     return;
   }
   createNextPi();
+});
+
+document.getElementById("cancelDeletePiBtn").addEventListener("click", () => {
+  pendingPiDelete = null;
+  document.getElementById("deletePiModal").classList.remove("show");
+});
+
+document.getElementById("confirmDeletePiBtn").addEventListener("click", () => {
+  deletePi(pendingPiDelete);
 });
 
 // Cancel modal

@@ -10,8 +10,6 @@ const requestLogger = require("./middleware/requestLogger");
 const app = express();
 const projectRoot = path.join(__dirname, "..");
 const publicDir = path.join(projectRoot, "public");
-const rootIndexPath = path.join(projectRoot, "index.html");
-const publicIndexPath = path.join(publicDir, "index.html");
 
 app.set("trust proxy", true);
 
@@ -20,26 +18,25 @@ app.use(express.json({ limit: "1mb" }));
 app.use(express.static(publicDir));
 
 app.get("/", (_req, res) => {
-  if (fs.existsSync(publicIndexPath)) {
-    return res.sendFile(publicIndexPath);
+  const mainPagePath = path.join(projectRoot, "pages", "index.html");
+
+  if (fs.existsSync(mainPagePath)) {
+    return res.sendFile(mainPagePath);
   }
 
-  if (fs.existsSync(rootIndexPath)) {
-    return res.sendFile(rootIndexPath);
-  }
-
-  return res.status(404).send("index.html not found");
+  return res.status(404).send("Oops!! Page not found");
 });
 
-app.get("/getEnv", (req, res) => {
-  // Get .env values
-  const environment = process.env;
-
-  return res.status(200).send(environment);
-})
+app.get("/admin", (req, res) => {
+  const adminHomePath = path.join(projectRoot, "pages/admin", "index.html");
+  if (!fs.existsSync(adminHomePath)) {
+    return res.status(404).send("Admin dashboard page not found");
+  }
+  return res.sendFile(adminHomePath);
+});
 
 app.get("/admin/sprint-calendar", (req, res) => {
-  const adminPagePath = path.join(projectRoot, "admin", "sprint-calendar.html");
+  const adminPagePath = path.join(projectRoot, "pages/admin", "sprint-calendar.html");
   if (!fs.existsSync(adminPagePath)) {
     return res.status(404).send("Sprint calendar admin page not found");
   }
@@ -47,9 +44,17 @@ app.get("/admin/sprint-calendar", (req, res) => {
 });
 
 app.get("/admin/sprint-roles", (req, res) => {
-  const adminPagePath = path.join(projectRoot, "admin", "sprint-roles.html");
+  const adminPagePath = path.join(projectRoot, "pages/admin", "sprint-roles.html");
   if (!fs.existsSync(adminPagePath)) {
     return res.status(404).send("Sprint roles admin page not found");
+  }
+  return res.sendFile(adminPagePath);
+});
+
+app.get("/admin/sprint-teams", (req, res) => {
+  const adminPagePath = path.join(projectRoot, "pages/admin", "sprint-teams.html");
+  if (!fs.existsSync(adminPagePath)) {
+    return res.status(404).send("Sprint teams admin page not found");
   }
   return res.sendFile(adminPagePath);
 });
