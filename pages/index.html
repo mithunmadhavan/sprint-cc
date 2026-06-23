@@ -387,17 +387,22 @@ function populateSprintDropdown() {
   const sel   = document.getElementById("sprintSel");
   const flag  = document.getElementById("windowFlag");
   const open  = SPRINT_CALENDAR.filter(s => TODAY >= s.start && TODAY <= s.end);
+  let selectable = [];
   sel.innerHTML = '<option value="">— Select sprint —</option>';
   if (open.length === 0) {
     const nxt = SPRINT_CALENDAR.filter(s => s.start > TODAY).sort((a,b)=>a.start.localeCompare(b.start));
-    const list = nxt.length ? [nxt[0]] : SPRINT_CALENDAR.slice(-1);
-    list.forEach(s => sel.appendChild(new Option(`${s.sprint}  (opens ${fmtDate(s.start)})`, s.sprint)));
+    selectable = nxt.length ? [nxt[0]] : SPRINT_CALENDAR.slice(-1);
+    selectable.forEach(s => sel.appendChild(new Option(`${s.sprint}  (opens ${fmtDate(s.start)})`, s.sprint)));
     flag.textContent = "NO WINDOW OPEN — SHOWING NEXT SPRINT";
     Object.assign(flag.style,{color:"#b45309",background:"#fef3e0",borderColor:"#f3d99a"});
   } else {
+    selectable = open;
     open.forEach(s => sel.appendChild(new Option(`${s.sprint}  (${fmtDate(s.start)} – ${fmtDate(s.end)})`, s.sprint)));
     flag.textContent = `SELECTION WINDOW OPEN — ${open.length} SPRINT${open.length>1?"S":""}`;
     Object.assign(flag.style,{color:"#1f6f4f",background:"#e3f3ec",borderColor:"#b9e3cd"});
+  }
+  if (selectable.length === 1) {
+    sel.value = selectable[0].sprint;
   }
   sel.addEventListener("change", onTeamSprintChange);
 }
@@ -598,7 +603,7 @@ function onField(e) {
 }
 
 document.getElementById("addRowBtn").addEventListener("click", () => {
-  rosterRows.push({ name:"", role:getDefaultRoleName(), ph:0, al:0, other:0, pct:100, notes:"" });
+  rosterRows.push({ name:"", role:getDefaultRoleName(), ph:0, al:0, other:0, pct:0, notes:"" });
   renderRoster();
 });
 
