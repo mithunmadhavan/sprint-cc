@@ -31,6 +31,13 @@ app.get("/", (_req, res) => {
   return res.status(404).send("index.html not found");
 });
 
+app.get("/getEnv", (req, res) => {
+  // Get .env values
+  const environment = process.env;
+
+  return res.status(200).send(environment);
+})
+
 app.use("/api", correlationId, requestLogger, apiRoutes);
 
 module.exports = app;
