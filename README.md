@@ -41,6 +41,20 @@ When deployed, `index.html` calls same-origin APIs (`/api/*`) automatically.
 - `GET /api/submissions`
 - `GET /api/submissions/:teamKey/:sprintNo`
 - `POST /api/submissions/upsert`
+- `GET /api/sprints`
+- `GET /api/sprints/:id`
+- `POST /api/sprints`
+- `PUT /api/sprints/:id`
+- `DELETE /api/sprints/:id`
+- `GET /api/sprints/next-pi-preview` (visualization only, no DB write)
+- `POST /api/sprints/create-next-pi` (creates next PI with `*.1..*.5` and `*.IP`)
+
+Sprint rules:
+- `pi` is numeric in DB.
+- Admin button **Create New PI** creates 6 records for the next PI.
+- Admin UI previews records first; create call recalculates on server before save.
+- New PI starts on next day after latest PI's `*.IP` end date.
+- Creation is blocked when 2 future (not started) PIs already exist.
 
 ## 3) Backend layering and logs
 

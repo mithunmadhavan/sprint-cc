@@ -2,8 +2,8 @@ const mongoose = require("mongoose");
 
 const sprintSchema = new mongoose.Schema(
   {
-    sprint: { type: String, required: true, trim: true },
-    pi: { type: String, required: true, trim: true },
+    sprint: { type: String, required: true, trim: true, unique: true },
+    pi: { type: Number, required: true, min: 1 },
     start: { type: Date, required: true },
     end: { type: Date, required: true },
     createdAt: { type: Date, default: Date.now },

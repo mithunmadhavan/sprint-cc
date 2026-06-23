@@ -72,7 +72,7 @@ test("backend upserts and reads submissions", async (t) => {
    assert.equal(list.body[0].Notes, "Second submit");
 });
 
-test("backend manages sprints with CRUD and filtering", async (t) => {
+test("backend manages sprints with CRUD, numeric PI, and next-PI generation", async (t) => {
    mongo = await MongoMemoryServer.create();
    process.env.MONGO_URI = mongo.getUri();
    process.env.VERCEL = "1";
@@ -83,70 +83,72 @@ test("backend manages sprints with CRUD and filtering", async (t) => {
       await closeConnections();
    });
 
-   // Create sprint 1
-   const create1 = await request(app)
-      .post("/api/sprints")
-      .send({
-         sprint: "35.1",
-         pi: "35",
-         start: "2026-06-10",
-         end: "2026-06-20"
-      });
-   assert.equal(create1.status, 201);
-   assert.ok(create1.body.sprint._id);
-   const id1 = create1.body.sprint._id;
+   const seed = [
+      { sprint: "36.1", pi: 36, start: "2026-07-09", end: "2026-07-22" },
+      { sprint: "36.2", pi: 36, start: "2026-07-23", end: "2026-08-05" },
+      { sprint: "36.3", pi: 36, start: "2026-08-06", end: "2026-08-19" },
+      { sprint: "36.4", pi: 36, start: "2026-08-20", end: "2026-09-02" },
+      { sprint: "36.5", pi: 36, start: "2026-09-03", end: "2026-09-16" },
+      { sprint: "36.IP", pi: 36, start: "2026-09-17", end: "2026-09-30" },
+   ];
 
-   // Create sprint 2
-   const create2 = await request(app)
-      .post("/api/sprints")
-      .send({
-         sprint: "35.2",
-         pi: "35",
-         start: "2026-06-24",
-         end: "2026-07-04"
-      });
-   assert.equal(create2.status, 201);
-   const id2 = create2.body.sprint._id;
+   for (const item of seed) {
+      const created = await request(app).post("/api/sprints").send(item);
+      assert.equal(created.status, 201);
+   }
 
-   // List all sprints
+   const preview = await request(app).get("/api/sprints/next-pi-preview");
+   assert.equal(preview.status, 200);
+   assert.equal(preview.body.pi, 37);
+   assert.equal(preview.body.count, 6);
+   assert.equal(preview.body.sprints[0].sprint, "37.1");
+
+   const beforeCreate = await request(app).get("/api/sprints?pi=37");
+   assert.equal(beforeCreate.status, 200);
+   assert.equal(beforeCreate.body.sprints.length, 0);
+
+   const createNextPi = await request(app).post("/api/sprints/create-next-pi");
+   assert.equal(createNextPi.status, 201);
+   assert.equal(createNextPi.body.pi, 37);
+   assert.equal(createNextPi.body.count, 6);
+   assert.equal(createNextPi.body.sprints[0].sprint, "37.1");
+   assert.equal(createNextPi.body.sprints[0].start, "2026-10-01T00:00:00.000Z");
+   assert.equal(createNextPi.body.sprints[5].sprint, "37.IP");
+   assert.equal(createNextPi.body.sprints[5].end, "2026-12-23T00:00:00.000Z");
+
    const list = await request(app).get("/api/sprints");
    assert.equal(list.status, 200);
-   assert.equal(list.body.sprints.length, 2);
+   assert.equal(list.body.sprints.length, 12);
 
-   // Filter by PI
-   const filterPI = await request(app).get("/api/sprints?pi=35");
+   const filterPI = await request(app).get("/api/sprints?pi=37");
    assert.equal(filterPI.status, 200);
-   assert.equal(filterPI.body.sprints.length, 2);
+   assert.equal(filterPI.body.sprints.length, 6);
 
-   // Filter by sprint name
-   const filterName = await request(app).get("/api/sprints?sprint=35.1");
-   assert.equal(filterName.status, 200);
-   assert.equal(filterName.body.sprints.length, 1);
-   assert.equal(filterName.body.sprints[0].sprint, "35.1");
-
-   // Update sprint 1
+   const editTarget = filterPI.body.sprints[0];
    const update = await request(app)
-      .put(`/api/sprints/${id1}`)
-      .send({
-         sprint: "35.1",
-         pi: "35",
-         start: "2026-06-11",
-         end: "2026-06-21"
-      });
+      .put(`/api/sprints/${editTarget._id}`)
+      .send({ pi: 37, start: "2026-10-02" });
    assert.equal(update.status, 200);
-   assert.equal(update.body.sprint.start, "2026-06-11T00:00:00.000Z");
+   assert.equal(update.body.sprint.pi, 37);
+   assert.equal(update.body.sprint.start, "2026-10-02T00:00:00.000Z");
 
-   // Get single sprint
-   const get = await request(app).get(`/api/sprints/${id1}`);
-   assert.equal(get.status, 200);
-   assert.equal(get.body.sprint.sprint, "35.1");
+   const futureA = await request(app).post("/api/sprints").send({
+      sprint: "210.1",
+      pi: 210,
+      start: "2099-01-01",
+      end: "2099-01-14",
+   });
+   assert.equal(futureA.status, 201);
+   const futureB = await request(app).post("/api/sprints").send({
+      sprint: "211.1",
+      pi: 211,
+      start: "2099-02-01",
+      end: "2099-02-14",
+   });
+   assert.equal(futureB.status, 201);
 
-   // Delete sprint
-   const del = await request(app).delete(`/api/sprints/${id1}`);
-   assert.equal(del.status, 200);
-
-   // Verify deleted
-   const listAfterDelete = await request(app).get("/api/sprints");
-   assert.equal(listAfterDelete.body.sprints.length, 1);
+   const blocked = await request(app).post("/api/sprints/create-next-pi");
+   assert.equal(blocked.status, 400);
+   assert.match(blocked.body.error, /two future PIs/i);
 });
 

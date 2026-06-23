@@ -99,29 +99,21 @@
       </div>
       <div>
         <label for="filterPI">PI</label>
-        <input type="text" id="filterPI" placeholder="e.g., 35">
+        <input type="number" id="filterPI" placeholder="e.g., 35" min="1" step="1">
       </div>
       <div>
-        <label for="filterStartFrom">Start Date From</label>
-        <input type="date" id="filterStartFrom">
+        <label for="filterStartDate">Start Date</label>
+        <input type="date" id="filterStartDate">
       </div>
       <div>
-        <label for="filterStartTo">Start Date To</label>
-        <input type="date" id="filterStartTo">
-      </div>
-      <div>
-        <label for="filterEndFrom">End Date From</label>
-        <input type="date" id="filterEndFrom">
-      </div>
-      <div>
-        <label for="filterEndTo">End Date To</label>
-        <input type="date" id="filterEndTo">
+        <label for="filterEndDate">End Date</label>
+        <input type="date" id="filterEndDate">
       </div>
     </div>
     <div style="display:flex;gap:10px;">
       <button class="btn btn-primary" id="filterBtn">🔍 Filter</button>
       <button class="btn btn-secondary" id="clearFilterBtn">Clear</button>
-      <button class="btn btn-primary" id="addSprintBtn">+ Add Sprint</button>
+      <button class="btn btn-primary" id="addSprintBtn">Create new PI</button>
     </div>
   </div>
 
@@ -155,7 +147,7 @@
 <!-- Add/Edit Sprint Modal -->
 <div class="modal" id="sprintModal">
   <div class="modal-content">
-    <div class="modal-header" id="modalTitle">Add Sprint</div>
+    <div class="modal-header" id="modalTitle">Edit Sprint</div>
     <div class="status-msg" id="modalStatusMsg"></div>
     <form id="sprintForm">
       <div class="form-group">
@@ -164,7 +156,7 @@
       </div>
       <div class="form-group">
         <label for="formPI">PI *</label>
-        <input type="text" id="formPI" required placeholder="e.g., 35">
+        <input type="number" id="formPI" required placeholder="e.g., 35" min="1" step="1">
       </div>
       <div class="form-group">
         <label for="formStart">Start Date *</label>
@@ -182,11 +174,43 @@
   </div>
 </div>
 
+<!-- Create PI Preview Modal -->
+<div class="modal" id="piPreviewModal">
+  <div class="modal-content" style="max-width:760px;">
+    <div class="modal-header" id="piPreviewTitle">Create New PI</div>
+    <div class="status-msg" id="piPreviewStatusMsg"></div>
+    <p style="margin:0 0 12px;color:var(--ink-soft);font-size:13px;">
+      Preview only. On create, backend recalculates again before saving.
+    </p>
+    <div class="tbl-scroll" style="margin-bottom:0;">
+      <table>
+        <thead>
+          <tr>
+            <th>Sprint</th>
+            <th>PI</th>
+            <th>Start</th>
+            <th>End</th>
+            <th>Duration</th>
+          </tr>
+        </thead>
+        <tbody id="piPreviewBody">
+          <tr><td colspan="5" class="center loading">Loading preview...</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary" id="cancelPiPreviewBtn">Cancel</button>
+      <button type="button" class="btn btn-primary" id="confirmPiCreateBtn">Create</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const API_BASE = window.location.protocol === "file:" ? "http://localhost:3000" : "";
 let sprints = [];
 let currentEditId = null;
 let CURRENT_USER = null;
+let lastPiPreview = null;
 
 // Auth check
 function checkAuth() {
@@ -231,10 +255,8 @@ async function loadSprints() {
     const params = new URLSearchParams({
       sprint: document.getElementById("filterSprint").value,
       pi: document.getElementById("filterPI").value,
-      startDateFrom: document.getElementById("filterStartFrom").value,
-      startDateTo: document.getElementById("filterStartTo").value,
-      endDateFrom: document.getElementById("filterEndFrom").value,
-      endDateTo: document.getElementById("filterEndTo").value,
+      startDate: document.getElementById("filterStartDate").value,
+      endDate: document.getElementById("filterEndDate").value,
     });
 
     const resp = await fetch(`${API_BASE}/api/sprints?${params}`);
@@ -307,12 +329,79 @@ async function deleteSprint(id) {
   }
 }
 
-// Show add sprint modal
+// Create next PI (6 sprint records)
 document.getElementById("addSprintBtn").addEventListener("click", () => {
-  currentEditId = null;
-  document.getElementById("modalTitle").textContent = "Add New Sprint";
-  document.getElementById("sprintForm").reset();
-  document.getElementById("sprintModal").classList.add("show");
+  openNextPiPreview();
+});
+
+async function openNextPiPreview() {
+  const previewModal = document.getElementById("piPreviewModal");
+  const previewBody = document.getElementById("piPreviewBody");
+  const previewStatus = document.getElementById("piPreviewStatusMsg");
+  const confirmBtn = document.getElementById("confirmPiCreateBtn");
+
+  lastPiPreview = null;
+  previewStatus.className = "status-msg";
+  previewStatus.textContent = "";
+  confirmBtn.disabled = true;
+  previewBody.innerHTML = '<tr><td colspan="5" class="center loading">Loading preview...</td></tr>';
+  previewModal.classList.add("show");
+
+  try {
+    const resp = await fetch(`${API_BASE}/api/sprints/next-pi-preview`);
+    const json = await resp.json();
+    if (!resp.ok) {
+      throw new Error(json.error || "Failed to generate preview");
+    }
+
+    lastPiPreview = json;
+    document.getElementById("piPreviewTitle").textContent = `Create New PI ${json.pi}`;
+    previewBody.innerHTML = json.sprints.map((s) => `
+      <tr>
+        <td><strong>${s.sprint}</strong></td>
+        <td>PI ${s.pi}</td>
+        <td>${fmtDate(s.start)}</td>
+        <td>${fmtDate(s.end)}</td>
+        <td>${calcDays(s.start, s.end)} days</td>
+      </tr>
+    `).join("");
+    confirmBtn.disabled = false;
+  } catch (e) {
+    previewBody.innerHTML = `<tr><td colspan="5" style="color:#b91c1c;padding:20px;text-align:center;">${e.message}</td></tr>`;
+  }
+}
+
+async function createNextPi() {
+  try {
+    const resp = await fetch(`${API_BASE}/api/sprints/create-next-pi`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const json = await resp.json();
+    if (!resp.ok) {
+      throw new Error(json.error || "Failed to create next PI");
+    }
+
+    document.getElementById("piPreviewModal").classList.remove("show");
+    showStatus(`✓ Created PI ${json.pi} with ${json.count} sprints`, "ok");
+    loadSprints();
+  } catch (e) {
+    const previewStatus = document.getElementById("piPreviewStatusMsg");
+    previewStatus.textContent = `✕ ${e.message}`;
+    previewStatus.className = "status-msg show err";
+  }
+}
+
+document.getElementById("cancelPiPreviewBtn").addEventListener("click", () => {
+  document.getElementById("piPreviewModal").classList.remove("show");
+});
+
+document.getElementById("confirmPiCreateBtn").addEventListener("click", () => {
+  if (!lastPiPreview) {
+    return;
+  }
+  createNextPi();
 });
 
 // Cancel modal
@@ -326,14 +415,17 @@ document.getElementById("sprintForm").addEventListener("submit", async (e) => {
 
   const payload = {
     sprint: document.getElementById("formSprint").value,
-    pi: document.getElementById("formPI").value,
+    pi: Number(document.getElementById("formPI").value),
     start: document.getElementById("formStart").value,
     end: document.getElementById("formEnd").value,
   };
 
   try {
-    const url = currentEditId ? `${API_BASE}/api/sprints/${currentEditId}` : `${API_BASE}/api/sprints`;
-    const method = currentEditId ? "PUT" : "POST";
+    if (!currentEditId) {
+      throw new Error("Only sprint editing is allowed here. Use 'Create New PI'.");
+    }
+    const url = `${API_BASE}/api/sprints/${currentEditId}`;
+    const method = "PUT";
 
     const resp = await fetch(url, {
       method,
@@ -347,7 +439,7 @@ document.getElementById("sprintForm").addEventListener("submit", async (e) => {
     }
 
     document.getElementById("sprintModal").classList.remove("show");
-    showStatus(currentEditId ? "✓ Sprint updated" : "✓ Sprint created", "ok");
+    showStatus("✓ Sprint updated", "ok");
     loadSprints();
   } catch (e) {
     document.getElementById("modalStatusMsg").textContent = `✕ ${e.message}`;
@@ -360,10 +452,8 @@ document.getElementById("filterBtn").addEventListener("click", loadSprints);
 document.getElementById("clearFilterBtn").addEventListener("click", () => {
   document.getElementById("filterSprint").value = "";
   document.getElementById("filterPI").value = "";
-  document.getElementById("filterStartFrom").value = "";
-  document.getElementById("filterStartTo").value = "";
-  document.getElementById("filterEndFrom").value = "";
-  document.getElementById("filterEndTo").value = "";
+  document.getElementById("filterStartDate").value = "";
+  document.getElementById("filterEndDate").value = "";
   loadSprints();
 });
 

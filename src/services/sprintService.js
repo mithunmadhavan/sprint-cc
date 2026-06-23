@@ -1,5 +1,21 @@
 const Sprint = require("../models/Sprint");
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function toPiNumber(value) {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n <= 0) {
+    const err = new Error("PI must be a positive integer");
+    err.statusCode = 400;
+    throw err;
+  }
+  return n;
+}
+
+function addDays(baseDate, days) {
+  return new Date(baseDate.getTime() + days * DAY_MS);
+}
+
 async function listSprints(filters = {}) {
   const query = {};
 
@@ -10,7 +26,7 @@ async function listSprints(filters = {}) {
 
   // Filter by PI
   if (filters.pi) {
-    query.pi = { $regex: filters.pi, $options: "i" };
+    query.pi = toPiNumber(filters.pi);
   }
 
   // Filter by start date range
@@ -59,7 +75,7 @@ async function getSprint(id) {
 async function createSprint(data) {
   const sprint = new Sprint({
     sprint: data.sprint,
-    pi: data.pi,
+    pi: toPiNumber(data.pi),
     start: new Date(data.start),
     end: new Date(data.end),
   });
@@ -70,7 +86,9 @@ async function updateSprint(id, data) {
   const sprint = await Sprint.findById(id);
   if (!sprint) return null;
   sprint.sprint = data.sprint || sprint.sprint;
-  sprint.pi = data.pi || sprint.pi;
+  if (data.pi !== undefined && data.pi !== null && data.pi !== "") {
+    sprint.pi = toPiNumber(data.pi);
+  }
   if (data.start) sprint.start = new Date(data.start);
   if (data.end) sprint.end = new Date(data.end);
   sprint.updatedAt = new Date();
@@ -81,11 +99,67 @@ async function deleteSprint(id) {
   return Sprint.findByIdAndDelete(id);
 }
 
+async function computeNextPiBatch() {
+  const now = new Date();
+
+  const futurePiRows = await Sprint.aggregate([
+    { $match: { start: { $gt: now } } },
+    { $group: { _id: "$pi" } },
+  ]);
+
+  if (futurePiRows.length >= 2) {
+    const err = new Error("Cannot create PI: already have two future PIs not started");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const latestPi = await Sprint.findOne().sort({ pi: -1 }).lean();
+  if (!latestPi) {
+    const err = new Error("Cannot create PI: no existing PI found to derive schedule");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const nextPi = latestPi.pi + 1;
+  const lastPiIp = await Sprint.findOne({ pi: latestPi.pi, sprint: `${latestPi.pi}.IP` }).lean();
+  if (!lastPiIp) {
+    const err = new Error(`Cannot create PI: missing ${latestPi.pi}.IP sprint in latest PI`);
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const startDate = addDays(new Date(lastPiIp.end), 1);
+  const sprintSuffixes = ["1", "2", "3", "4", "5", "IP"];
+  const sprints = sprintSuffixes.map((suffix, index) => {
+    const start = addDays(startDate, index * 14);
+    const end = addDays(start, 13);
+    return {
+      sprint: `${nextPi}.${suffix}`,
+      pi: nextPi,
+      start,
+      end,
+    };
+  });
+
+  return { pi: nextPi, sprints };
+}
+
+async function previewNextPiBatch() {
+  return computeNextPiBatch();
+}
+
+async function createNextPiBatch() {
+  const plan = await computeNextPiBatch();
+  return Sprint.insertMany(plan.sprints, { ordered: true });
+}
+
 module.exports = {
   listSprints,
   getSprint,
   createSprint,
   updateSprint,
   deleteSprint,
+  previewNextPiBatch,
+  createNextPiBatch,
 };
 

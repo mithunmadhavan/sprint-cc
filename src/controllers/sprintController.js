@@ -8,6 +8,9 @@ async function listSprints(req, res) {
     const filters = {
       sprint: req.query.sprint || "",
       pi: req.query.pi || "",
+      startDate: req.query.startDate || "",
+      endDate: req.query.endDate || "",
+      // Backward-compatible support for previous range params.
       startDateFrom: req.query.startDateFrom || "",
       startDateTo: req.query.startDateTo || "",
       endDateFrom: req.query.endDateFrom || "",
@@ -17,6 +20,9 @@ async function listSprints(req, res) {
     const sprints = await sprintService.listSprints(filters);
     return res.json({ ok: true, sprints });
   } catch (e) {
+    if (e.statusCode === 400) {
+      return res.status(400).json({ error: e.message });
+    }
     logger.error("db-failure", {
       correlationId: req.correlationId,
       method: req.method,
@@ -37,6 +43,9 @@ async function getSprint(req, res) {
     }
     return res.json({ ok: true, sprint });
   } catch (e) {
+    if (e.statusCode === 400) {
+      return res.status(400).json({ error: e.message });
+    }
     logger.error("db-failure", {
       correlationId: req.correlationId,
       method: req.method,
@@ -66,6 +75,9 @@ async function createSprint(req, res) {
     });
     return res.status(201).json({ ok: true, sprint: newSprint });
   } catch (e) {
+    if (e.statusCode === 400) {
+      return res.status(400).json({ error: e.message });
+    }
     logger.error("db-failure", {
       correlationId: req.correlationId,
       method: req.method,
@@ -94,6 +106,9 @@ async function updateSprint(req, res) {
     }
     return res.json({ ok: true, sprint: updated });
   } catch (e) {
+    if (e.statusCode === 400) {
+      return res.status(400).json({ error: e.message });
+    }
     logger.error("db-failure", {
       correlationId: req.correlationId,
       method: req.method,
@@ -127,11 +142,63 @@ async function deleteSprint(req, res) {
   }
 }
 
+async function createNextPi(req, res) {
+  try {
+    await connectDb(req.correlationId);
+    const created = await sprintService.createNextPiBatch();
+    return res.status(201).json({
+      ok: true,
+      pi: created[0]?.pi,
+      count: created.length,
+      sprints: created,
+    });
+  } catch (e) {
+    if (e.statusCode === 400) {
+      return res.status(400).json({ error: e.message });
+    }
+    logger.error("db-failure", {
+      correlationId: req.correlationId,
+      method: req.method,
+      path: req.path,
+      action: "create-next-pi",
+      error: e,
+    });
+    return res.status(500).json({ error: "Failed to create next PI" });
+  }
+}
+
+async function previewNextPi(req, res) {
+  try {
+    await connectDb(req.correlationId);
+    const preview = await sprintService.previewNextPiBatch();
+    return res.json({
+      ok: true,
+      pi: preview.pi,
+      count: preview.sprints.length,
+      sprints: preview.sprints,
+    });
+  } catch (e) {
+    if (e.statusCode === 400) {
+      return res.status(400).json({ error: e.message });
+    }
+    logger.error("db-failure", {
+      correlationId: req.correlationId,
+      method: req.method,
+      path: req.path,
+      action: "preview-next-pi",
+      error: e,
+    });
+    return res.status(500).json({ error: "Failed to preview next PI" });
+  }
+}
+
 module.exports = {
   listSprints,
   getSprint,
   createSprint,
   updateSprint,
   deleteSprint,
+  previewNextPi,
+  createNextPi,
 };
 

@@ -28,8 +28,10 @@ router.post("/submissions/upsert", submissionController.upsertSubmission);
 
 // Sprint calendar management
 router.get("/sprints", sprintController.listSprints);
-router.get("/sprints/:id", sprintController.getSprint);
+router.get("/sprints/next-pi-preview", sprintController.previewNextPi);
+router.post("/sprints/create-next-pi", sprintController.createNextPi);
 router.post("/sprints", sprintController.createSprint);
+router.get("/sprints/:id", sprintController.getSprint);
 router.put("/sprints/:id", sprintController.updateSprint);
 router.delete("/sprints/:id", sprintController.deleteSprint);
 
