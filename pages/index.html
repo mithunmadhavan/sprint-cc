@@ -126,11 +126,33 @@
     </div>
   </div>
 
-  <!-- ALL TEAMS VIEW (Admin only) -->
-  <div class="card" id="allTeamsCard" style="display:none;">
-    <h2><span class="titlewrap"><span class="dot"></span>All Teams Submissions</span></h2>
-    <p class="legend-note">Showing all capacity submissions from all teams.</p>
-    <div class="all-submissions-grid" id="allTeamsContainer"></div>
+  <!-- Submission history -->
+  <div class="card" id="allTeamsCard">
+    <h2><span class="titlewrap"><span class="dot"></span>Submission History</span></h2>
+    <p class="legend-note" id="submissionHistoryNote">Showing the latest 10 submissions. Select both Team and Sprint to narrow the list.</p>
+    <div class="tbl-scroll submission-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Team</th>
+            <th>Project Key</th>
+            <th>Sprint</th>
+            <th>PI</th>
+            <th>Team Size</th>
+            <th>Total Days</th>
+            <th>Overhead</th>
+            <th>Capacity</th>
+            <th>Dev</th>
+            <th>Test</th>
+            <th>Submitted Date</th>
+            <th>Submitted By</th>
+          </tr>
+        </thead>
+        <tbody id="allTeamsContainer">
+          <tr><td colspan="12" class="center loading">Loading submissions...</td></tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 
   <!-- KPI dashboard -->
@@ -144,6 +166,10 @@
       <div class="kpi total-days">
         <div class="label">Total Days</div><div class="value" id="kpiTotalDays">0</div>
         <div class="foot">Sum of Available Days</div>
+      </div>
+      <div class="kpi overhead">
+        <div class="label">Sprint Overhead</div><div class="value" id="kpiOverhead">0.0</div>
+        <div class="foot">20% of Total Days</div>
       </div>
       <div class="kpi sprint-cap">
         <div class="label">Sprint Capacity</div><div class="value" id="kpiSprintCap">0.0</div>
@@ -349,7 +375,7 @@ function bootApp() {
    document.getElementById("exportBtn").style.display    = isAdmin ? "inline-flex"  : "none";
    document.getElementById("adminEditBadge").style.display = isAdmin ? "inline-block" : "none";
    document.getElementById("normalNote").style.display   = isAdmin ? "none" : "block";
-   document.getElementById("allTeamsCard").style.display = isAdmin ? "block" : "none";
+   document.getElementById("allTeamsCard").style.display = "block";
    document.getElementById("adminEntryLink").style.display = isAdmin ? "inline" : "none";
 
    Promise.all([loadSprintCalendar(), loadRolesConfig(), loadTeams()]).then(() => {
@@ -363,7 +389,7 @@ function bootApp() {
       syncConfigDependentUi();
      updateReadout();
      renderRoster();
-     if (isAdmin) renderAllTeams();
+        renderAllTeams();
    });
  }
 
@@ -409,6 +435,8 @@ async function onTeamSprintChange() {
   const teamKey   = document.getElementById("teamSel").value;
   const sprintVal = document.getElementById("sprintSel").value;
   const strip     = document.getElementById("historyStrip");
+
+  loadAllTeams();
 
   if (!teamKey || !sprintVal) { strip.style.display = "none"; return; }
 
@@ -531,7 +559,7 @@ async function loadSprintCalendar() {
  /* ═══════════════════════════════════════════════════════════════════
     ROSTER TABLE
  ═══════════════════════════════════════════════════════════════════ */
-function roleSlug(r) { return r.toLowerCase().replace(/\s+/g,""); }
+function roleSlug(r) { return String(r || "unknown").toLowerCase().replace(/\s+/g,""); }
 function availDays(row) {
   const leave = (Number(row.ph)||0) + (Number(row.al)||0) + (Number(row.other)||0);
   return Math.max(0, Math.round(((SPRINT_LEN * (Number(row.pct)||0) / 100) - leave) * 10) / 10);
@@ -598,14 +626,14 @@ document.getElementById("addRowBtn").addEventListener("click", () => {
    KPI CALCULATIONS
 ═══════════════════════════════════════════════════════════════════ */
 function computeKPIs() {
-  const capacityRows = rosterRows.filter(r => r.name.trim() && isCapacityRole(r.role));
+  const capacityRows = rosterRows.filter(r => String(r?.name || "").trim() && isCapacityRole(r?.role || ""));
   const teamSize   = capacityRows.length;
   const totalDays  = capacityRows.reduce((s,r) => s + availDays(r), 0);
   const overhead   = totalDays * 0.20;
   const sprintCap  = totalDays - overhead;
   let devDays = 0, tstDays = 0;
   capacityRows.forEach(r => {
-    const a = availDays(r), rl = r.role.toLowerCase();
+    const a = availDays(r), rl = String(r?.role || "").toLowerCase();
     if (rl.includes("dev"))  devDays += a;
     else if (rl.includes("test")) tstDays += a;
   });
@@ -637,34 +665,60 @@ async function fetchAllSubmissions() {
   return apiJson("/api/submissions");
 }
 
+async function fetchSubmissionHistory() {
+  const teamKey = document.getElementById("teamSel")?.value || "";
+  const sprintNo = document.getElementById("sprintSel")?.value || "";
+  const params = new URLSearchParams();
+
+  if (teamKey && sprintNo) {
+    params.set("teamKey", teamKey);
+    params.set("sprintNo", sprintNo);
+  } else {
+    params.set("limit", "10");
+  }
+
+  return apiJson(`/api/submissions?${params.toString()}`);
+}
+
 async function loadAllTeams() {
   const container = document.getElementById("allTeamsContainer");
+  const note = document.getElementById("submissionHistoryNote");
+  const teamKey = document.getElementById("teamSel")?.value || "";
+  const sprintNo = document.getElementById("sprintSel")?.value || "";
+  if (note) {
+    note.textContent = teamKey && sprintNo
+      ? `Showing submission history for ${getTeamNameByKey(teamKey)} / Sprint ${sprintNo}.`
+      : "Showing the latest 10 submissions. Select both Team and Sprint to narrow the list.";
+  }
   let submissions = [];
   try {
-    submissions = await fetchAllSubmissions();
+    submissions = await fetchSubmissionHistory();
   } catch (e) {
-    container.innerHTML = '<p style="color:#b91c1c;font-size:12px;grid-column:1/-1;">Unable to load submissions from backend.</p>';
+    container.innerHTML = '<tr><td colspan="12" style="color:#b91c1c;padding:20px;text-align:center;">Unable to load submissions from backend.</td></tr>';
     return;
   }
 
   if (submissions.length === 0) {
-    container.innerHTML = '<p style="color:var(--ink-soft);font-size:12px;grid-column:1/-1;">No submissions yet. Teams will appear here once they submit data.</p>';
+    container.innerHTML = '<tr><td colspan="12" style="color:var(--ink-soft);padding:20px;text-align:center;">No submissions found for the current selection.</td></tr>';
     return;
   }
-  
-  const html = submissions.map(s => `
-    <div class="submission-card">
-      <h3>${s.Team || s.name}</h3>
-      <div class="submission-row"><span class="submission-label">Sprint:</span><span class="submission-value">${s.SprintNo}</span></div>
-      <div class="submission-row"><span class="submission-label">Team Size:</span><span class="submission-value">${s.TeamSize}</span></div>
-      <div class="submission-row"><span class="submission-label">Capacity:</span><span class="submission-value">${r1(s.SprintCapacity)}d</span></div>
-      <div class="submission-row"><span class="submission-label">Dev:</span><span class="submission-value">${r1(s.DevCapacityDays)}d (${s.DevPercent}%)</span></div>
-      <div class="submission-row"><span class="submission-label">Test:</span><span class="submission-value">${r1(s.TestCapacityDays)}d (${s.TestPercent}%)</span></div>
-      <div class="submission-row"><span class="submission-label">Submitted:</span><span class="submission-value">${s.submittedDate}</span></div>
-    </div>
-  `).join('');
-  
-  container.innerHTML = html;
+
+  container.innerHTML = submissions.map((s) => `
+    <tr>
+      <td><strong>${s.Team || "—"}</strong></td>
+      <td class="submission-mono">${s.ProjectKey || "—"}</td>
+      <td class="submission-mono">${s.SprintNo || "—"}</td>
+      <td class="submission-mono">${s.PI || "—"}</td>
+      <td class="submission-mono">${r1(s.TeamSize || 0)}</td>
+      <td class="submission-mono">${r1(s.TotalDays || 0)}</td>
+      <td class="submission-mono">${r1(s.SprintOverhead || 0)}</td>
+      <td class="submission-mono">${r1(s.SprintCapacity || 0)}</td>
+      <td class="submission-mono">${r1(s.DevCapacityDays || 0)}d (${s.DevPercent || 0}%)</td>
+      <td class="submission-mono">${r1(s.TestCapacityDays || 0)}d (${s.TestPercent || 0}%)</td>
+      <td class="submission-mono">${s.submittedDate || "—"}</td>
+      <td>${s.submittedBy || "—"}</td>
+    </tr>
+  `).join("");
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -771,7 +825,7 @@ document.getElementById("submitBtn").addEventListener("click", async () => {
       : `✓ Submitted — ${teamObj.name}, Sprint ${sprintVal}. Capacity: ${payload.SprintCapacity} days.`;
     statusEl.className = result.isReplace ? "status-msg replace" : "status-msg ok";
     await onTeamSprintChange();
-    if (CURRENT_USER?.role === "admin") renderAllTeams();
+    renderAllTeams();
   }
 });
 

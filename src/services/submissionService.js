@@ -1,8 +1,25 @@
 const Submission = require("../models/Submission");
 const { cleanRoster } = require("../utils/roster");
 
-async function listSubmissions() {
-  return Submission.find({}).sort({ updatedAt: -1 }).lean();
+async function listSubmissions(filters = {}) {
+  const query = {};
+
+  if (filters.teamKey) {
+    query.ProjectKey = String(filters.teamKey).trim().toUpperCase();
+  }
+
+  if (filters.sprintNo) {
+    query.SprintNo = String(filters.sprintNo).trim();
+  }
+
+  let dbQuery = Submission.find(query).sort({ updatedAt: -1 });
+
+  const limit = Number(filters.limit);
+  if (Number.isInteger(limit) && limit > 0) {
+    dbQuery = dbQuery.limit(limit);
+  }
+
+  return dbQuery.lean();
 }
 
 async function getSubmission(teamKey, sprintNo) {

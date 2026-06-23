@@ -65,11 +65,30 @@ test("backend upserts and reads submissions", async (t) => {
   assert.equal(second.status, 200);
   assert.equal(second.body.isReplace, true);
 
+  const another = await request(app).post("/api/submissions/upsert").send({
+    ...payload,
+    Team: "Cadillac",
+    ProjectKey: "CAD",
+    SprintNo: "35.2",
+    PI: "35",
+    Notes: "Another team",
+  });
+  assert.equal(another.status, 200);
+
    const list = await request(app).get("/api/submissions");
    assert.equal(list.status, 200);
    assert.equal(Array.isArray(list.body), true);
-   assert.equal(list.body.length, 1);
-   assert.equal(list.body[0].Notes, "Second submit");
+   assert.equal(list.body.length, 2);
+
+   const filtered = await request(app).get("/api/submissions?teamKey=MC&sprintNo=35.1");
+   assert.equal(filtered.status, 200);
+   assert.equal(filtered.body.length, 1);
+   assert.equal(filtered.body[0].Notes, "Second submit");
+
+   const limited = await request(app).get("/api/submissions?limit=1");
+   assert.equal(limited.status, 200);
+   assert.equal(limited.body.length, 1);
+   assert.equal(limited.body[0].ProjectKey, "CAD");
 });
 
 test("backend manages sprints with CRUD, numeric PI, and next-PI generation", async (t) => {

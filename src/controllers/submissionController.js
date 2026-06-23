@@ -27,7 +27,11 @@ async function getHealth(req, res) {
 async function listSubmissions(req, res) {
   try {
     await connectDb({ correlationId: req.correlationId });
-    const submissions = await submissionService.listSubmissions();
+    const submissions = await submissionService.listSubmissions({
+      teamKey: req.query.teamKey || "",
+      sprintNo: req.query.sprintNo || "",
+      limit: req.query.limit || "",
+    });
     return res.json(submissions);
   } catch (error) {
     logDbFailure("list-submissions", error, req);
