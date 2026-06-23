@@ -149,7 +149,7 @@
       </div>
       <div class="kpi overhead">
         <div class="label">Sprint Overhead</div><div class="value" id="kpiOverhead">0.0</div>
-        <div class="foot">20% of Total Days</div>
+        <div class="foot" id="kpiOverheadFoot">BAU/meetings/training from available days</div>
       </div>
       <div class="kpi sprint-cap">
         <div class="label">Sprint Capacity</div><div class="value" id="kpiSprintCap">0.0</div>
@@ -164,7 +164,7 @@
         </div>
       </div>
     </div>
-    <p class="legend-note"><b>Team size</b> excludes Architect/Scrum Master/PO. <b>Overhead</b> = 20% of total days. <b>Bifurcation</b> splits Dev vs Test days.</p>
+    <p class="legend-note"><b>Team size</b> excludes Architect/Scrum Master/PO. <b>Overhead</b> is unproductive BAU/meetings/training time applied on available days. <b>Bifurcation</b> splits Dev vs Test days.</p>
   </div>
 
   <!-- Submit -->
@@ -542,7 +542,7 @@ async function loadSprintCalendar() {
 function roleSlug(r) { return String(r || "unknown").toLowerCase().replace(/\s+/g,""); }
 function availDays(row) {
   const leave = (Number(row.ph)||0) + (Number(row.al)||0) + (Number(row.other)||0);
-  return Math.max(0, Math.round(((SPRINT_LEN * (Number(row.pct)||0) / 100) - leave) * 10) / 10);
+  return Math.max(0, Math.round((SPRINT_LEN - leave) * 10) / 10);
 }
 
 function renderRoster() {
@@ -567,7 +567,7 @@ function renderRoster() {
       <td><input type="number" data-f="ph"    data-i="${idx}" value="${row.ph}"    min="0" step="0.5"></td>
       <td><input type="number" data-f="al"    data-i="${idx}" value="${row.al}"    min="0" step="0.5"></td>
       <td><input type="number" data-f="other" data-i="${idx}" value="${row.other}" min="0" step="0.5"></td>
-      <td class="pct"><select data-f="pct" data-i="${idx}" ${!isAdmin?"disabled":""}>${[100,75,50,25,0].map(p=>`<option value="${p}" ${p===Number(row.pct)?"selected":""}>${p}%</option>`).join("")}</select></td>
+      <td class="pct"><input type="number" data-f="pct" data-i="${idx}" value="${Number(row.pct) || 0}" min="0" max="100" step="5" ${!isAdmin?"disabled":""}></td>
       <td class="avail">${avail}</td>
       <td><input type="text" data-f="notes" data-i="${idx}" value="${esc(row.notes)}" placeholder="—" ${!isAdmin?"disabled":""}></td>
       <td>${isAdmin?`<button class="ic-btn" data-rm="${idx}" title="Remove">✕</button>`:""}</td>`;
@@ -609,13 +609,21 @@ function computeKPIs() {
   const capacityRows = rosterRows.filter(r => String(r?.name || "").trim() && isCapacityRole(r?.role || ""));
   const teamSize   = capacityRows.length;
   const totalDays  = capacityRows.reduce((s,r) => s + availDays(r), 0);
-  const overhead   = totalDays * 0.20;
+  const overhead = capacityRows.reduce((sum, r) => {
+    const available = availDays(r);
+    const pct = Math.max(0, Math.min(100, Number(r?.pct) || 0));
+    return sum + (available * pct / 100);
+  }, 0);
+  const overheadPct = totalDays > 0 ? (overhead / totalDays) * 100 : 0;
   const sprintCap  = totalDays - overhead;
   let devDays = 0, tstDays = 0;
   capacityRows.forEach(r => {
-    const a = availDays(r), rl = String(r?.role || "").toLowerCase();
-    if (rl.includes("dev"))  devDays += a;
-    else if (rl.includes("test")) tstDays += a;
+    const available = availDays(r);
+    const pct = Math.max(0, Math.min(100, Number(r?.pct) || 0));
+    const net = Math.max(0, available - (available * pct / 100));
+    const rl = String(r?.role || "").toLowerCase();
+    if (rl.includes("dev"))  devDays += net;
+    else if (rl.includes("test")) tstDays += net;
   });
   const tot = devDays + tstDays;
   const dp  = tot > 0 ? Math.round(devDays/tot*100) : 0;
@@ -624,6 +632,7 @@ function computeKPIs() {
   document.getElementById("kpiTeamSize").textContent  = teamSize;
   document.getElementById("kpiTotalDays").textContent = r1(totalDays);
   document.getElementById("kpiOverhead").textContent  = r1(overhead);
+  document.getElementById("kpiOverheadFoot").textContent = `${r1(overheadPct)}% of Total Days (BAU/Meetings/Training)`;
   document.getElementById("kpiSprintCap").textContent = r1(sprintCap);
   document.getElementById("kpiBifText").textContent   = `Dev ${r1(devDays)}d · Test ${r1(tstDays)}d`;
   document.getElementById("bifDevBar").style.width    = dp + "%";
