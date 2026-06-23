@@ -130,28 +130,8 @@
   <div class="card" id="allTeamsCard">
     <h2><span class="titlewrap"><span class="dot"></span>Submission History</span></h2>
     <p class="legend-note" id="submissionHistoryNote">Showing the latest 10 submissions. Select both Team and Sprint to narrow the list.</p>
-    <div class="tbl-scroll submission-scroll">
-      <table>
-        <thead>
-          <tr>
-            <th>Team</th>
-            <th>Project Key</th>
-            <th>Sprint</th>
-            <th>PI</th>
-            <th>Team Size</th>
-            <th>Total Days</th>
-            <th>Overhead</th>
-            <th>Capacity</th>
-            <th>Dev</th>
-            <th>Test</th>
-            <th>Submitted Date</th>
-            <th>Submitted By</th>
-          </tr>
-        </thead>
-        <tbody id="allTeamsContainer">
-          <tr><td colspan="12" class="center loading">Loading submissions...</td></tr>
-        </tbody>
-      </table>
+    <div class="all-submissions-grid" id="allTeamsContainer">
+      <p style="color:var(--ink-soft);font-size:12px;grid-column:1/-1;">Loading submissions...</p>
     </div>
   </div>
 
@@ -694,30 +674,23 @@ async function loadAllTeams() {
   try {
     submissions = await fetchSubmissionHistory();
   } catch (e) {
-    container.innerHTML = '<tr><td colspan="12" style="color:#b91c1c;padding:20px;text-align:center;">Unable to load submissions from backend.</td></tr>';
+    container.innerHTML = '<p style="color:#b91c1c;font-size:12px;grid-column:1/-1;">Unable to load submissions from backend.</p>';
     return;
   }
 
   if (submissions.length === 0) {
-    container.innerHTML = '<tr><td colspan="12" style="color:var(--ink-soft);padding:20px;text-align:center;">No submissions found for the current selection.</td></tr>';
+    container.innerHTML = '<p style="color:var(--ink-soft);font-size:12px;grid-column:1/-1;">No submissions found for the current selection.</p>';
     return;
   }
 
   container.innerHTML = submissions.map((s) => `
-    <tr>
-      <td><strong>${s.Team || "—"}</strong></td>
-      <td class="submission-mono">${s.ProjectKey || "—"}</td>
-      <td class="submission-mono">${s.SprintNo || "—"}</td>
-      <td class="submission-mono">${s.PI || "—"}</td>
-      <td class="submission-mono">${r1(s.TeamSize || 0)}</td>
-      <td class="submission-mono">${r1(s.TotalDays || 0)}</td>
-      <td class="submission-mono">${r1(s.SprintOverhead || 0)}</td>
-      <td class="submission-mono">${r1(s.SprintCapacity || 0)}</td>
-      <td class="submission-mono">${r1(s.DevCapacityDays || 0)}d (${s.DevPercent || 0}%)</td>
-      <td class="submission-mono">${r1(s.TestCapacityDays || 0)}d (${s.TestPercent || 0}%)</td>
-      <td class="submission-mono">${s.submittedDate || "—"}</td>
-      <td>${s.submittedBy || "—"}</td>
-    </tr>
+    <div class="submission-card">
+      <h3>${s.Team || "—"}</h3>
+      <div class="submission-row"><span class="submission-label">Sprint:</span><span class="submission-value">${s.SprintNo || "—"}</span></div>
+      <div class="submission-row"><span class="submission-label">Team Size:</span><span class="submission-value">${r1(s.TeamSize || 0)}</span></div>
+      <div class="submission-row"><span class="submission-label">Overhead:</span><span class="submission-value">${r1(s.SprintOverhead || 0)}d</span></div>
+      <div class="submission-row"><span class="submission-label">Capacity:</span><span class="submission-value">${r1(s.SprintCapacity || 0)}d</span></div>
+    </div>
   `).join("");
 }
 

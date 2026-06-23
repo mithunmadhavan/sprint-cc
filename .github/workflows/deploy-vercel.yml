@@ -34,10 +34,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Prepare static frontend for backend deploy
-        run: |
-          mkdir -p public
-          cp index.html public/index.html
 
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
