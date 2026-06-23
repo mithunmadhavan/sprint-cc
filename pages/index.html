@@ -292,11 +292,12 @@ function getSubmissionFieldState(sprintInfo) {
 
    const start = toDateKey(sprintInfo.start);
    const end = toDateKey(sprintInfo.end);
+   const sprintStartGraceEnd = toDateKey(new Date(new Date(sprintInfo.start).getTime() + 7 * 24 * 60 * 60 * 1000));
    const goalsAchievedWindowEnd = toDateKey(new Date(new Date(sprintInfo.end).getTime() + 7 * 24 * 60 * 60 * 1000));
-   const sprintGoalEditable = TODAY < start;
+   const sprintGoalEditable = TODAY <= sprintStartGraceEnd;
    const goalsAchievedEditable = TODAY >= end && TODAY <= goalsAchievedWindowEnd;
    return {
-     objectivesEditable: TODAY < start,
+     objectivesEditable: TODAY <= sprintStartGraceEnd,
      sprintGoalEditable,
      goalsAchievedEditable,
      sprintGoalDisplayMode: sprintGoalEditable ? "input" : "card",
@@ -451,7 +452,9 @@ function syncSubmissionFieldState() {
     setFieldHelp(
       "sprintGoalHelp",
       sprintInfo
-        ? (sprintGoalEditable ? "Editable before the sprint start date." : `Locked till ${fmtDate(sprintInfo.start)}.`)
+        ? (sprintGoalEditable
+          ? `Editable through ${fmtDate(new Date(new Date(sprintInfo.start).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10))}.`
+          : `Locked after ${fmtDate(new Date(new Date(sprintInfo.start).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10))}.`)
         : "Select a sprint to manage sprint goal.",
       sprintGoalEditable
     );
@@ -469,7 +472,9 @@ function syncSubmissionFieldState() {
     setFieldHelp(
       "objectivesHelp",
       sprintInfo
-        ? (objectivesEditable ? "Objectives are editable before sprint start." : `Locked from ${fmtDate(sprintInfo.start)} onward.`)
+        ? (objectivesEditable
+          ? `Objectives are editable through ${fmtDate(new Date(new Date(sprintInfo.start).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10))}.`
+          : `Objectives locked after ${fmtDate(new Date(new Date(sprintInfo.start).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10))}.`)
         : "Select a sprint to manage objectives.",
       objectivesEditable
     );
@@ -515,7 +520,7 @@ function setConnectivityState(isOnline) {
   if (!el) return;
   el.classList.remove("online", "offline");
   el.classList.add(isOnline ? "online" : "offline");
-  el.textContent = `Backend: ${isOnline ? "online" : "offline"}`;
+  el.textContent = `${isOnline ? "online" : "offline"}`;
 }
 
 function scheduleConnectivityCheck(isOnline) {

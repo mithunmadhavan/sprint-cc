@@ -147,7 +147,7 @@ test("backend enforces submission field edit windows", async (t) => {
   });
   assert.equal(beforeStart.status, 200);
 
-  const duringSprintGoalBlocked = await request(app).post("/api/submissions/upsert").send({
+  const duringSprintGoalAllowedWithinGrace = await request(app).post("/api/submissions/upsert").send({
     Team: "McLaren",
     ProjectKey: "MC",
     SprintNo: "90.2",
@@ -159,10 +159,9 @@ test("backend enforces submission field edit windows", async (t) => {
     Notes: "during-sprint",
     Roster: [],
   });
-  assert.equal(duringSprintGoalBlocked.status, 400);
-  assert.match(duringSprintGoalBlocked.body.error, /sprint goal/i);
+  assert.equal(duringSprintGoalAllowedWithinGrace.status, 200);
 
-  const duringObjectivesBlocked = await request(app).post("/api/submissions/upsert").send({
+  const duringObjectivesAllowedWithinGrace = await request(app).post("/api/submissions/upsert").send({
     Team: "McLaren",
     ProjectKey: "MC2",
     SprintNo: "90.2",
@@ -174,8 +173,37 @@ test("backend enforces submission field edit windows", async (t) => {
     Notes: "during-sprint",
     Roster: [],
   });
-  assert.equal(duringObjectivesBlocked.status, 400);
-  assert.match(duringObjectivesBlocked.body.error, /objectives/i);
+  assert.equal(duringObjectivesAllowedWithinGrace.status, 200);
+
+  const afterGraceSprintGoalBlocked = await request(app).post("/api/submissions/upsert").send({
+    Team: "McLaren",
+    ProjectKey: "MC7",
+    SprintNo: "90.5",
+    submittedDate: iso(0),
+    submittedBy: "Tester",
+    SprintGoal: 9,
+    GoalsAchieved: "",
+    Objectives: [],
+    Notes: "after-grace",
+    Roster: [],
+  });
+  assert.equal(afterGraceSprintGoalBlocked.status, 400);
+  assert.match(afterGraceSprintGoalBlocked.body.error, /sprint goal/i);
+
+  const afterGraceObjectivesBlocked = await request(app).post("/api/submissions/upsert").send({
+    Team: "McLaren",
+    ProjectKey: "MC8",
+    SprintNo: "90.5",
+    submittedDate: iso(0),
+    submittedBy: "Tester",
+    SprintGoal: "",
+    GoalsAchieved: "",
+    Objectives: ["Late objective"],
+    Notes: "after-grace",
+    Roster: [],
+  });
+  assert.equal(afterGraceObjectivesBlocked.status, 400);
+  assert.match(afterGraceObjectivesBlocked.body.error, /objectives/i);
 
   const beforeEndGoalsBlocked = await request(app).post("/api/submissions/upsert").send({
     Team: "McLaren",

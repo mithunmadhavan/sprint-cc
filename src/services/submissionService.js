@@ -82,10 +82,11 @@ function assertSubmissionFieldWindows(sprintWindow, existing, nextPayload) {
   const today = toDateKey(new Date());
   const start = toDateKey(sprintWindow.start);
   const end = toDateKey(sprintWindow.end);
+  const sprintStartGraceEnd = toDateKey(addDays(sprintWindow.start, 7));
   const goalsAchievedEnd = toDateKey(addDays(sprintWindow.end, 7));
 
-  const objectivesEditable = today < start;
-  const sprintGoalEditable = today < start;
+  const objectivesEditable = today <= sprintStartGraceEnd;
+  const sprintGoalEditable = today <= sprintStartGraceEnd;
   const goalsAchievedEditable = today >= end && today <= goalsAchievedEnd;
 
   const previousObjectives = normalizeObjectives(existing?.Objectives, existing?.Objective);
@@ -93,13 +94,13 @@ function assertSubmissionFieldWindows(sprintWindow, existing, nextPayload) {
   const previousGoalsAchieved = existing?.GoalsAchieved ?? null;
 
   if (!objectivesEditable && !sameObjectives(previousObjectives, nextPayload.Objectives)) {
-    const err = new Error("Objectives can only be edited before the sprint start date");
+    const err = new Error("Objectives can only be edited through one week after the sprint start date");
     err.statusCode = 400;
     throw err;
   }
 
   if (!sprintGoalEditable && !sameNullableNumber(previousSprintGoal, nextPayload.SprintGoal)) {
-    const err = new Error("Sprint goal can only be edited before the sprint start date");
+    const err = new Error("Sprint goal can only be edited through one week after the sprint start date");
     err.statusCode = 400;
     throw err;
   }
