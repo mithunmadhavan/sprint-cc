@@ -80,6 +80,8 @@ jobs:
           vercel env rm MONGO_URI "$TARGET_ENV" --yes --token="$VERCEL_TOKEN" 2>/dev/null || true
           # Add updated value — env add reads value from stdin
           echo "$MONGO_URI" | vercel env add MONGO_URI "$TARGET_ENV" --token="$VERCEL_TOKEN"
+          # Verify it was registered
+          vercel env ls --token="$VERCEL_TOKEN" | grep -q "MONGO_URI" && echo "✓ MONGO_URI confirmed in Vercel env store" || { echo "ERROR: MONGO_URI not found after add" >&2; exit 1; }
 
       - name: Pull Vercel project settings
         run: |
