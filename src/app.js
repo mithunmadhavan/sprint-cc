@@ -46,6 +46,14 @@ app.get("/admin/sprint-calendar", (req, res) => {
   return res.sendFile(adminPagePath);
 });
 
+app.get("/admin/sprint-roles", (req, res) => {
+  const adminPagePath = path.join(projectRoot, "admin", "sprint-roles.html");
+  if (!fs.existsSync(adminPagePath)) {
+    return res.status(404).send("Sprint roles admin page not found");
+  }
+  return res.sendFile(adminPagePath);
+});
+
 app.use("/api", correlationId, requestLogger, apiRoutes);
 
 module.exports = app;

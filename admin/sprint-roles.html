@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sprint Roles Admin - Sprint Capacity Collector</title>
+  <style>
+    :root {
+      --ink:#1a2230; --ink-soft:#4a5568; --paper:#f7f8fa; --card:#ffffff;
+      --line:#e2e5eb; --green:#1f6f4f; --green-soft:#e3f3ec;
+      --blue:#1d4ed8; --admin:#6d28d9; --admin-soft:#f1eafe;
+      --warn:#b45309; --warn-soft:#fef3e0;
+      --mono:'SF Mono','Roboto Mono',Consolas,monospace;
+    }
+    *{box-sizing:border-box;}
+    body{margin:0;font-family:-apple-system,'Segoe UI',Inter,Arial,sans-serif;background:var(--paper);color:var(--ink);-webkit-font-smoothing:antialiased;}
+    .wrap{max-width:1180px;margin:0 auto;padding:28px 24px 40px;}
+    .userbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;font-size:12px;color:var(--ink-soft);}
+    .userbar .nav{display:flex;gap:16px;flex-wrap:wrap;}
+    .nav-link{text-decoration:none;color:var(--blue);cursor:pointer;font-weight:600;}
+    .nav-link:hover{text-decoration:underline;}
+    .head{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid var(--ink);padding-bottom:16px;margin-bottom:22px;flex-wrap:wrap;gap:12px;}
+    .head h1{font-size:26px;margin:0 0 4px;letter-spacing:-.02em;font-weight:800;}
+    .head .sub{color:var(--ink-soft);font-size:13.5px;margin:0;}
+    .badge{font-family:var(--mono);font-size:10px;font-weight:700;background:var(--admin-soft);color:var(--admin);padding:5px 10px;border-radius:4px;letter-spacing:.04em;}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:22px 24px;margin-bottom:20px;}
+    .card h2{font-size:15px;text-transform:uppercase;letter-spacing:.06em;margin:0 0 16px;color:var(--ink);}
+    .filter-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px;}
+    label{display:block;font-size:12px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;}
+    input[type=text],select{width:100%;padding:10px 12px;font-size:14px;border:1.5px solid var(--line);border-radius:7px;background:#fff;color:var(--ink);}
+    input:focus,select:focus{outline:none;border-color:var(--ink);}
+    .btn{border:none;border-radius:8px;padding:10px 16px;font-size:13.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;}
+    .btn-primary{background:var(--ink);color:#fff;}
+    .btn-primary:hover{background:#000;}
+    .btn-secondary{background:var(--paper);border:1.5px solid var(--line);color:var(--ink-soft);}
+    .btn-secondary:hover{border-color:var(--ink);}
+    .btn-danger{background:#fef2f2;color:#b91c1c;border:1.5px solid #fca5a5;}
+    .btn-danger:hover{background:#fee2e2;}
+    .btn-small{padding:6px 10px;font-size:11px;}
+    .tbl-scroll{overflow-x:auto;border:1px solid var(--line);border-radius:10px;margin-bottom:14px;}
+    table{border-collapse:collapse;width:100%;min-width:820px;font-size:13px;}
+    thead tr{background:var(--ink);color:#fff;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;}
+    thead th{padding:10px;text-align:left;font-weight:700;}
+    tbody td{padding:10px;border-bottom:1px solid var(--line);vertical-align:middle;}
+    tbody tr:nth-child(even){background:#fafbfc;}
+    tbody tr:hover{background:#f0f2f6;}
+    .status-msg{font-size:13px;padding:10px 14px;border-radius:7px;margin-bottom:12px;display:none;}
+    .status-msg.show{display:block;}
+    .status-msg.ok{background:var(--green-soft);color:var(--green);border:1px solid #b9e3cd;}
+    .status-msg.err{background:#fef2f2;color:#b91c1c;border:1px solid #fca5a5;}
+    .pill{display:inline-flex;align-items:center;padding:4px 8px;border-radius:999px;font-size:11px;font-weight:700;}
+    .pill.team{background:#e0ecff;color:#1d4ed8;}
+    .pill.non-team{background:var(--warn-soft);color:var(--warn);}
+    .pill.capacity-on{background:var(--green-soft);color:var(--green);}
+    .pill.capacity-off{background:#f3f4f6;color:#6b7280;}
+    .modal{display:none;position:fixed;inset:0;background:rgba(26,34,48,.7);z-index:99;align-items:center;justify-content:center;}
+    .modal.show{display:flex;}
+    .modal-content{background:#fff;border-radius:12px;padding:30px;width:90%;max-width:520px;max-height:90vh;overflow-y:auto;}
+    .modal-header{font-size:16px;font-weight:700;margin-bottom:20px;color:var(--ink);}
+    .modal-footer{display:flex;justify-content:flex-end;gap:10px;margin-top:20px;}
+    .form-group{margin-bottom:14px;}
+    .hint{margin-top:6px;font-size:12px;color:var(--ink-soft);}
+    .checkbox-row{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1.5px solid var(--line);border-radius:7px;}
+    .checkbox-row input{transform:scale(1.1);}
+    .center{text-align:center;}
+    .loading{color:var(--ink-soft);font-size:12px;}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="userbar">
+    <div class="nav">
+      <a href="/" class="nav-link">← Back to App</a>
+      <a href="/admin/sprint-calendar" class="nav-link">Sprint Calendar Admin</a>
+    </div>
+    <div style="font-size:11px;color:var(--ink-soft);">
+      <a href="#" id="signOutBtn" class="nav-link" style="color:var(--ink-soft);">Sign out</a>
+    </div>
+  </div>
+
+  <div class="head">
+    <div>
+      <h1>Sprint Roles Admin</h1>
+      <p class="sub">Manage planning roles, team vs non-team, and KPI capacity inclusion</p>
+    </div>
+    <div class="badge">ADMIN ONLY</div>
+  </div>
+
+  <div class="card">
+    <h2>Search & Filter</h2>
+    <div class="filter-row">
+      <div>
+        <label for="filterName">Role Name</label>
+        <input type="text" id="filterName" placeholder="e.g., Architect">
+      </div>
+      <div>
+        <label for="filterType">Role Type</label>
+        <select id="filterType">
+          <option value="">All</option>
+          <option value="team">Team</option>
+          <option value="non-team">Non-Team</option>
+        </select>
+      </div>
+      <div>
+        <label for="filterCapacity">KPI Capacity</label>
+        <select id="filterCapacity">
+          <option value="">All</option>
+          <option value="included">Included</option>
+          <option value="excluded">Excluded</option>
+        </select>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      <button class="btn btn-primary" id="filterBtn">🔍 Filter</button>
+      <button class="btn btn-secondary" id="clearFilterBtn">Clear</button>
+      <button class="btn btn-primary" id="addRoleBtn">+ Add Role</button>
+    </div>
+  </div>
+
+  <div class="status-msg" id="statusMsg"></div>
+
+  <div class="card">
+    <h2>Role Configuration</h2>
+    <div class="tbl-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Role Name</th>
+            <th>Type</th>
+            <th>KPI Capacity</th>
+            <th>Behavior</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="rolesBody">
+          <tr><td colspan="5" class="center loading">Loading roles...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="roleModal">
+  <div class="modal-content">
+    <div class="modal-header" id="modalTitle">Add Role</div>
+    <div class="status-msg" id="modalStatusMsg"></div>
+    <form id="roleForm">
+      <div class="form-group">
+        <label for="formName">Role Name *</label>
+        <input type="text" id="formName" required placeholder="e.g., Business Analyst">
+      </div>
+      <div class="form-group">
+        <label for="formRoleType">Role Type *</label>
+        <select id="formRoleType" required>
+          <option value="team">Team</option>
+          <option value="non-team">Non-Team</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>KPI Capacity</label>
+        <div class="checkbox-row">
+          <input type="checkbox" id="formIsCapacity" checked>
+          <div>
+            <div style="font-weight:700;">Include this role in Automated Capacity KPIs</div>
+            <div class="hint" id="capacityHint">Team roles are always included in KPI capacity.</div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="cancelBtn">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+const API_BASE = window.location.protocol === "file:" ? "http://localhost:3000" : "";
+let roles = [];
+let currentEditId = null;
+let CURRENT_USER = null;
+
+function checkAuth() {
+  const user = JSON.parse(sessionStorage.getItem("sc_user") || "null");
+  if (!user || user.role !== "admin") {
+    alert("Admin access required");
+    window.location.href = "/";
+    return false;
+  }
+  CURRENT_USER = user;
+  return true;
+}
+
+function showStatus(msg, type) {
+  const el = document.getElementById("statusMsg");
+  el.textContent = msg;
+  el.className = `status-msg show ${type}`;
+  setTimeout(() => el.classList.remove("show"), 3000);
+}
+
+function setModalStatus(msg, type) {
+  const el = document.getElementById("modalStatusMsg");
+  if (!msg) {
+    el.textContent = "";
+    el.className = "status-msg";
+    return;
+  }
+  el.textContent = msg;
+  el.className = `status-msg show ${type}`;
+}
+
+function getCapacityBehavior(role) {
+  return role.isCapacity
+    ? "Member contributes to team size, total days, sprint capacity, and dev/test KPIs."
+    : "Member stays in roster but is excluded from Automated Capacity KPIs.";
+}
+
+function syncCapacityUi() {
+  const type = document.getElementById("formRoleType").value;
+  const checkbox = document.getElementById("formIsCapacity");
+  const hint = document.getElementById("capacityHint");
+  if (type === "team") {
+    checkbox.checked = true;
+    checkbox.disabled = true;
+    hint.textContent = "Team roles are always included in KPI capacity.";
+  } else {
+    checkbox.disabled = false;
+    hint.textContent = "For non-team roles, disable this to exclude the member from Automated Capacity KPIs.";
+  }
+}
+
+async function loadRoles() {
+  const tbody = document.getElementById("rolesBody");
+  tbody.innerHTML = '<tr><td colspan="5" class="center loading">Loading...</td></tr>';
+
+  try {
+    const params = new URLSearchParams({
+      name: document.getElementById("filterName").value,
+      roleType: document.getElementById("filterType").value,
+      capacity: document.getElementById("filterCapacity").value,
+    });
+
+    const resp = await fetch(`${API_BASE}/api/roles?${params}`, { cache: "no-store" });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || "Failed to load roles");
+
+    roles = data.roles || [];
+    if (roles.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" class="center" style="color:var(--ink-soft);padding:20px;">No roles found</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = roles.map((role) => `
+      <tr>
+        <td><strong>${role.name}</strong></td>
+        <td><span class="pill ${role.roleType}">${role.roleType === "team" ? "Team" : "Non-Team"}</span></td>
+        <td><span class="pill ${role.isCapacity ? "capacity-on" : "capacity-off"}">${role.isCapacity ? "Included" : "Excluded"}</span></td>
+        <td>${getCapacityBehavior(role)}</td>
+        <td style="white-space:nowrap;">
+          <button class="btn btn-small btn-secondary" onclick="editRole('${role._id}')">Edit</button>
+          <button class="btn btn-small btn-danger" onclick="deleteRole('${role._id}')">Delete</button>
+        </td>
+      </tr>
+    `).join("");
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="5" style="color:#b91c1c;padding:20px;text-align:center;">${e.message}</td></tr>`;
+  }
+}
+
+function openCreateModal() {
+  currentEditId = null;
+  document.getElementById("modalTitle").textContent = "Add Role";
+  document.getElementById("roleForm").reset();
+  document.getElementById("formRoleType").value = "team";
+  document.getElementById("formIsCapacity").checked = true;
+  syncCapacityUi();
+  setModalStatus("", "ok");
+  document.getElementById("roleModal").classList.add("show");
+}
+
+function editRole(id) {
+  const role = roles.find((item) => item._id === id);
+  if (!role) return;
+  currentEditId = id;
+  document.getElementById("modalTitle").textContent = `Edit Role: ${role.name}`;
+  document.getElementById("formName").value = role.name;
+  document.getElementById("formRoleType").value = role.roleType;
+  document.getElementById("formIsCapacity").checked = role.isCapacity;
+  syncCapacityUi();
+  setModalStatus("", "ok");
+  document.getElementById("roleModal").classList.add("show");
+}
+
+async function deleteRole(id) {
+  const role = roles.find((item) => item._id === id);
+  if (!role) return;
+  if (!window.confirm(`Delete role '${role.name}'?`)) return;
+
+  try {
+    const resp = await fetch(`${API_BASE}/api/roles/${id}`, { method: "DELETE" });
+    const json = await resp.json();
+    if (!resp.ok) throw new Error(json.error || "Delete failed");
+    showStatus("✓ Role deleted", "ok");
+    loadRoles();
+  } catch (e) {
+    showStatus(`✕ ${e.message}`, "err");
+  }
+}
+
+function closeModal() {
+  document.getElementById("roleModal").classList.remove("show");
+}
+
+document.getElementById("filterBtn").addEventListener("click", loadRoles);
+document.getElementById("clearFilterBtn").addEventListener("click", () => {
+  document.getElementById("filterName").value = "";
+  document.getElementById("filterType").value = "";
+  document.getElementById("filterCapacity").value = "";
+  loadRoles();
+});
+document.getElementById("addRoleBtn").addEventListener("click", openCreateModal);
+document.getElementById("cancelBtn").addEventListener("click", closeModal);
+document.getElementById("formRoleType").addEventListener("change", syncCapacityUi);
+document.getElementById("signOutBtn").addEventListener("click", () => {
+  sessionStorage.removeItem("sc_user");
+  window.location.href = "/";
+});
+
+document.getElementById("roleForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const payload = {
+    name: document.getElementById("formName").value.trim(),
+    roleType: document.getElementById("formRoleType").value,
+    isCapacity: document.getElementById("formIsCapacity").checked,
+  };
+
+  try {
+    const url = currentEditId ? `${API_BASE}/api/roles/${currentEditId}` : `${API_BASE}/api/roles`;
+    const method = currentEditId ? "PUT" : "POST";
+    const resp = await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const json = await resp.json();
+    if (!resp.ok) throw new Error(json.error || "Save failed");
+
+    closeModal();
+    showStatus(currentEditId ? "✓ Role updated" : "✓ Role created", "ok");
+    loadRoles();
+  } catch (e2) {
+    setModalStatus(`✕ ${e2.message}`, "err");
+  }
+});
+
+if (checkAuth()) {
+  syncCapacityUi();
+  loadRoles();
+}
+</script>
+</body>
+</html>
+

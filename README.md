@@ -48,6 +48,11 @@ When deployed, `index.html` calls same-origin APIs (`/api/*`) automatically.
 - `DELETE /api/sprints/:id`
 - `GET /api/sprints/next-pi-preview` (visualization only, no DB write)
 - `POST /api/sprints/create-next-pi` (creates next PI with `*.1..*.5` and `*.IP`)
+- `GET /api/roles`
+- `GET /api/roles/:id`
+- `POST /api/roles`
+- `PUT /api/roles/:id`
+- `DELETE /api/roles/:id`
 
 Sprint rules:
 - `pi` is numeric in DB.
@@ -55,6 +60,11 @@ Sprint rules:
 - Admin UI previews records first; create call recalculates on server before save.
 - New PI starts on next day after latest PI's `*.IP` end date.
 - Creation is blocked when 2 future (not started) PIs already exist.
+
+Role rules:
+- Planning roles are loaded dynamically from `/api/roles` instead of hardcoded frontend constants.
+- Admin dashboard is available at `/admin/sprint-roles`.
+- Non-team roles can set `isCapacity=false`; those roster members are excluded from Automated Capacity KPIs (`Team Size`, `Total Days`, `Sprint Capacity`, and dev/test split).
 
 ## 3) Backend layering and logs
 

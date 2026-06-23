@@ -152,3 +152,50 @@ test("backend manages sprints with CRUD, numeric PI, and next-PI generation", as
    assert.match(blocked.body.error, /two future PIs/i);
 });
 
+test("backend manages sprint roles with default seeding and capacity flags", async (t) => {
+   mongo = await MongoMemoryServer.create();
+   process.env.MONGO_URI = mongo.getUri();
+   process.env.VERCEL = "1";
+
+   app = require("../server");
+
+   t.after(async () => {
+      await closeConnections();
+   });
+
+   const listDefaults = await request(app).get("/api/roles");
+   assert.equal(listDefaults.status, 200);
+   assert.equal(listDefaults.body.ok, true);
+   assert.equal(listDefaults.body.roles.length >= 7, true);
+   const architect = listDefaults.body.roles.find((role) => role.name === "Architect");
+   assert.equal(architect.roleType, "non-team");
+   assert.equal(architect.isCapacity, false);
+
+   const create = await request(app)
+      .post("/api/roles")
+      .send({ name: "Business Analyst", roleType: "non-team", isCapacity: true });
+   assert.equal(create.status, 201);
+   assert.equal(create.body.role.roleType, "non-team");
+   assert.equal(create.body.role.isCapacity, true);
+   const roleId = create.body.role._id;
+
+   const update = await request(app)
+      .put(`/api/roles/${roleId}`)
+      .send({ name: "Business Analyst", roleType: "non-team", isCapacity: false });
+   assert.equal(update.status, 200);
+   assert.equal(update.body.role.isCapacity, false);
+
+   const createTeam = await request(app)
+      .post("/api/roles")
+      .send({ name: "Platform Engineer", roleType: "team", isCapacity: false });
+   assert.equal(createTeam.status, 201);
+   assert.equal(createTeam.body.role.isCapacity, true);
+
+   const filterExcluded = await request(app).get("/api/roles?capacity=excluded&roleType=non-team");
+   assert.equal(filterExcluded.status, 200);
+   assert.equal(filterExcluded.body.roles.some((role) => role.name === "Business Analyst"), true);
+
+   const del = await request(app).delete(`/api/roles/${roleId}`);
+   assert.equal(del.status, 200);
+});
+
