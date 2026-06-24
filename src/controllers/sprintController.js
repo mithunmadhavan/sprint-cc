@@ -104,7 +104,12 @@ async function updateSprint(req, res) {
     if (!updated) {
       return res.status(404).json({ error: "Sprint not found" });
     }
-    return res.json({ ok: true, sprint: updated });
+    return res.json({
+      ok: true,
+      sprint: updated.sprint,
+      reflowedCount: updated.reflowedCount || 0,
+      reflowedSprints: updated.reflowedSprints || [],
+    });
   } catch (e) {
     if (e.statusCode === 400) {
       return res.status(400).json({ error: e.message });

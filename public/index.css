@@ -154,7 +154,17 @@
    color: var(--admin);
  }
 
- .role-pill.normal {
+  .role-pill.editor {
+    background: #e6f0ff;
+    color: #1e4ea6;
+  }
+
+  .role-pill.viewer {
+    background: #e7eaf0;
+    color: var(--ink-soft);
+  }
+
+  .role-pill.normal {
    background: #e7eaf0;
    color: var(--ink-soft);
  }
@@ -551,6 +561,27 @@
    flex-wrap: wrap;
  }
 
+ .roster-toolbar {
+   display: flex;
+   justify-content: space-between;
+   align-items: flex-start;
+   gap: 16px;
+   flex-wrap: wrap;
+   margin-bottom: 14px;
+ }
+
+ .product-health-box {
+   min-width: 220px;
+   max-width: 280px;
+ }
+
+ .roster-toolbar-actions {
+   display: flex;
+   flex-direction: column;
+   align-items: flex-end;
+   gap: 8px;
+ }
+
  .addrow-bar button.add {
    border: 1.5px dashed var(--ink-soft);
    background: transparent;
@@ -649,6 +680,11 @@
  .kpi.overhead {
    border-left: 4px solid var(--warn);
    background: var(--warn-soft);
+ }
+
+ .kpi.product-health {
+   border-left: 4px solid var(--accent);
+   background: var(--accent-soft);
  }
 
  .kpi.sprint-cap {
@@ -948,6 +984,12 @@
    color: var(--ink-soft);
    margin-top: 10px;
    line-height: 1.5;
+ }
+
+ .legend-note.compact {
+   margin-top: 0;
+   text-align: right;
+   max-width: 340px;
  }
 
  code {

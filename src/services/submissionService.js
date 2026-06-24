@@ -39,6 +39,21 @@ function normalizeNullableNumber(value) {
   return parsed;
 }
 
+function normalizePercentage(value, fieldName) {
+  if (value === "" || value === null || value === undefined) {
+    return 0;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) {
+    const err = new Error(`${fieldName} must be a number between 0 and 100`);
+    err.statusCode = 400;
+    throw err;
+  }
+
+  return parsed;
+}
+
 function sameObjectives(left = [], right = []) {
   if (left.length !== right.length) return false;
   return left.every((value, index) => value === right[index]);
@@ -46,6 +61,24 @@ function sameObjectives(left = [], right = []) {
 
 function sameNullableNumber(left, right) {
   return (left ?? null) === (right ?? null);
+}
+
+function sameRoster(left = [], right = []) {
+  const normalizedLeft = cleanRoster(left);
+  const normalizedRight = cleanRoster(right);
+  if (normalizedLeft.length !== normalizedRight.length) return false;
+
+  return normalizedLeft.every((member, index) => {
+    const compare = normalizedRight[index] || {};
+    return member.name === compare.name
+      && member.role === compare.role
+      && Number(member.ph || 0) === Number(compare.ph || 0)
+      && Number(member.al || 0) === Number(compare.al || 0)
+      && Number(member.other || 0) === Number(compare.other || 0)
+      && Number(member.pct || 0) === Number(compare.pct || 0)
+      && String(member.notes || "") === String(compare.notes || "")
+      && Number(member.AvailableDays || 0) === Number(compare.AvailableDays || 0);
+  });
 }
 
 async function resolveSprintWindow(payload) {
@@ -88,10 +121,13 @@ function assertSubmissionFieldWindows(sprintWindow, existing, nextPayload) {
   const objectivesEditable = today <= sprintStartGraceEnd;
   const sprintGoalEditable = today <= sprintStartGraceEnd;
   const goalsAchievedEditable = today >= end && today <= goalsAchievedEnd;
+  const rosterEditable = today <= sprintStartGraceEnd;
 
   const previousObjectives = normalizeObjectives(existing?.Objectives, existing?.Objective);
   const previousSprintGoal = existing?.SprintGoal ?? null;
   const previousGoalsAchieved = existing?.GoalsAchieved ?? null;
+  const previousRoster = cleanRoster(existing?.Roster);
+  const previousProductHealth = Number(existing?.ProductHealth || 0);
 
   if (!objectivesEditable && !sameObjectives(previousObjectives, nextPayload.Objectives)) {
     const err = new Error("Objectives can only be edited through one week after the sprint start date");
@@ -107,6 +143,18 @@ function assertSubmissionFieldWindows(sprintWindow, existing, nextPayload) {
 
   if (!goalsAchievedEditable && !sameNullableNumber(previousGoalsAchieved, nextPayload.GoalsAchieved)) {
     const err = new Error("Goals achieved can only be edited from the sprint end date through one week after");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (!rosterEditable && !sameRoster(previousRoster, nextPayload.Roster)) {
+    const err = new Error("Team roster can only be edited through one week after the sprint start date");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (!rosterEditable && Number(nextPayload.ProductHealth || 0) !== previousProductHealth) {
+    const err = new Error("Product health can only be edited through one week after the sprint start date");
     err.statusCode = 400;
     throw err;
   }
@@ -149,6 +197,8 @@ async function upsertSubmission(payload) {
     SprintEnd: sprintWindow?.end ? toDateKey(sprintWindow.end) : String(payload.SprintEnd || ""),
     SprintGoal: normalizeNullableNumber(payload.SprintGoal),
     GoalsAchieved: normalizeNullableNumber(payload.GoalsAchieved),
+    ProductHealth: normalizePercentage(payload.ProductHealth, "Product health"),
+    ProductHealthReduction: Math.max(0, Number(payload.ProductHealthReduction || 0)),
     Objectives: normalizeObjectives(payload.Objectives, payload.Objective),
     Roster: cleanRoster(payload.Roster)
   };

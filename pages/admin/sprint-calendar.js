@@ -2,15 +2,74 @@ const API_BASE = window.location.protocol === "file:" ? "http://localhost:3000" 
 let sprints = [];
 let currentEditId = null;
 let CURRENT_USER = null;
+let AUTH_TOKEN = "";
 let lastPiPreview = null;
 let pendingPiDelete = null;
 let addSprintOptions = [];
+let currentEditDurationDays = 14;
+
+function addDaysToIsoDate(isoDate, days) {
+  if (!isoDate) return "";
+  const date = new Date(`${isoDate}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return "";
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function updateDateSuggestionNote() {
+  const start = document.getElementById("formStart").value;
+  const end = document.getElementById("formEnd").value;
+  const note = document.getElementById("dateSuggestionNote");
+  if (!start || !end) {
+    note.textContent = "Changing the start date will auto-suggest an updated end date with the same duration.";
+    return;
+  }
+
+  note.textContent = `Current suggestion keeps ${currentEditDurationDays} days: ${fmtDate(start)} → ${fmtDate(end)}.`;
+}
+
+function syncEndDateFromStart() {
+  const start = document.getElementById("formStart").value;
+  if (!start) {
+    updateDateSuggestionNote();
+    return;
+  }
+
+  const suggestedEnd = addDaysToIsoDate(start, Math.max(0, currentEditDurationDays - 1));
+  if (suggestedEnd) {
+    document.getElementById("formEnd").value = suggestedEnd;
+  }
+  updateDateSuggestionNote();
+}
+
+function clearClientSession() {
+  sessionStorage.removeItem("sc_user");
+  sessionStorage.removeItem("sc_token");
+}
+
+async function authFetch(path, options = {}) {
+  const headers = new Headers(options.headers || {});
+  const token = AUTH_TOKEN || sessionStorage.getItem("sc_token") || "";
+  const requestUrl = String(path).startsWith("http") ? path : `${API_BASE}${path}`;
+  if (token && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+  return fetch(requestUrl, {
+    ...options,
+    headers,
+  });
+}
 
 // Auth check
 function checkAuth() {
   const user = JSON.parse(sessionStorage.getItem("sc_user") || "null");
-  if (!user || user.role !== "admin") {
-    alert("Admin access required");
+  const role = String(user?.role || user?.serverRole || "").toLowerCase();
+  AUTH_TOKEN = sessionStorage.getItem("sc_token") || "";
+
+  if (!user || role !== "admin" || !AUTH_TOKEN) {
+    // Do NOT clear the session here – a non-admin or unauthenticated visitor
+    // should be redirected to the home page without destroying a valid
+    // editor/viewer session that belongs to the main app.
     window.location.href = "/";
     return false;
   }
@@ -82,7 +141,7 @@ async function loadAddSprintOptions() {
   const previousValue = select.value;
 
   try {
-    const resp = await fetch(`${API_BASE}/api/sprints/add-sprint-options`);
+    const resp = await authFetch(`/api/sprints/add-sprint-options`);
     const json = await resp.json();
     if (!resp.ok) {
       throw new Error(json.error || "Failed to load add-sprint options");
@@ -130,7 +189,7 @@ async function loadSprints() {
       endDate: document.getElementById("filterEndDate").value,
     });
 
-    const resp = await fetch(`${API_BASE}/api/sprints?${params}`);
+    const resp = await authFetch(`/api/sprints?${params}`);
     if (!resp.ok) throw new Error("Failed to load sprints");
 
     const data = await resp.json();
@@ -185,7 +244,7 @@ async function deleteSprintEntry(id, sprintName) {
   }
 
   try {
-    const resp = await fetch(`${API_BASE}/api/sprints/${id}`, { method: "DELETE" });
+    const resp = await authFetch(`/api/sprints/${id}`, { method: "DELETE" });
     const json = await resp.json();
     if (!resp.ok) {
       throw new Error(json.error || "Failed to delete sprint");
@@ -211,15 +270,18 @@ function editSprint(id) {
   }
 
   currentEditId = id;
+  currentEditDurationDays = calcDays(sprint.start, sprint.end);
   document.getElementById("modalStatusMsg").className = "status-msg";
   document.getElementById("modalStatusMsg").textContent = "";
   document.getElementById("editWarningBanner").classList.add("show");
   document.getElementById("saveReflowHint").classList.add("show");
+  document.getElementById("existingDatesNote").textContent = `Existing schedule: ${fmtDate(sprint.start)} → ${fmtDate(sprint.end)} (${currentEditDurationDays} days).`;
   document.getElementById("modalTitle").textContent = `Edit Sprint: ${sprint.sprint}`;
   document.getElementById("formSprint").value = sprint.sprint;
   document.getElementById("formPI").value = sprint.pi;
   document.getElementById("formStart").value = sprint.start.slice(0, 10);
   document.getElementById("formEnd").value = sprint.end.slice(0, 10);
+  updateDateSuggestionNote();
   document.getElementById("sprintModal").classList.add("show");
 }
 
@@ -240,7 +302,7 @@ async function openDeletePiModal(piNumber) {
   modal.classList.add("show");
 
   try {
-    const resp = await fetch(`${API_BASE}/api/sprints?pi=${encodeURIComponent(pendingPiDelete)}`);
+    const resp = await authFetch(`/api/sprints?pi=${encodeURIComponent(pendingPiDelete)}`);
     const json = await resp.json();
     if (!resp.ok) throw new Error(json.error || "Failed to load PI details");
 
@@ -269,7 +331,7 @@ async function deletePi(piNumber) {
   if (!piNumber) return;
 
   try {
-    const resp = await fetch(`${API_BASE}/api/sprints/pi/${piNumber}`, { method: "DELETE" });
+    const resp = await authFetch(`/api/sprints/pi/${piNumber}`, { method: "DELETE" });
     const json = await resp.json();
     if (!resp.ok) throw new Error(json.error || "Failed to delete PI");
 
@@ -297,7 +359,7 @@ async function createNewSprintInExistingPi() {
   }
 
   try {
-    const resp = await fetch(`${API_BASE}/api/sprints/create-new-sprint`, {
+    const resp = await authFetch(`/api/sprints/create-new-sprint`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ pi: selected.pi }),
@@ -328,7 +390,7 @@ async function openNextPiPreview() {
   previewModal.classList.add("show");
 
   try {
-    const resp = await fetch(`${API_BASE}/api/sprints/next-pi-preview`);
+    const resp = await authFetch(`/api/sprints/next-pi-preview`);
     const json = await resp.json();
     if (!resp.ok) {
       throw new Error(json.error || "Failed to generate preview");
@@ -353,7 +415,7 @@ async function openNextPiPreview() {
 
 async function createNextPi() {
   try {
-    const resp = await fetch(`${API_BASE}/api/sprints/create-next-pi`, {
+    const resp = await authFetch(`/api/sprints/create-next-pi`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
     });
@@ -438,7 +500,7 @@ function initializePageEvents() {
       const url = `${API_BASE}/api/sprints/${currentEditId}`;
       const method = "PUT";
 
-      const resp = await fetch(url, {
+      const resp = await authFetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -449,10 +511,12 @@ function initializePageEvents() {
         throw new Error(err.error || "Save failed");
       }
 
+      const json = await resp.json();
+
       document.getElementById("sprintModal").classList.remove("show");
       document.getElementById("editWarningBanner").classList.remove("show");
       document.getElementById("saveReflowHint").classList.remove("show");
-      showStatus("✓ Sprint updated", "ok");
+      showStatus(`✓ Sprint updated${json.reflowedCount ? ` · reflowed ${json.reflowedCount} following sprint(s)` : ""}`, "ok");
       await Promise.all([loadSprints(), loadAddSprintOptions()]);
     } catch (e) {
       document.getElementById("modalStatusMsg").textContent = `✕ ${e.message}`;
@@ -470,10 +534,12 @@ function initializePageEvents() {
     loadSprints();
   });
   document.getElementById("addSprintPiSelect").addEventListener("change", syncAddSprintUi);
+  document.getElementById("formStart").addEventListener("input", syncEndDateFromStart);
+  document.getElementById("formEnd").addEventListener("input", updateDateSuggestionNote);
 
   // Sign out
   document.getElementById("signOutBtn").addEventListener("click", () => {
-    sessionStorage.removeItem("sc_user");
+    clearClientSession();
     window.location.href = "/";
   });
 

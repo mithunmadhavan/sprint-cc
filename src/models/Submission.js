@@ -28,6 +28,8 @@ const submissionSchema = new mongoose.Schema(
     TeamSize: { type: Number, default: 0 },
     TotalDays: { type: Number, default: 0 },
     SprintOverhead: { type: Number, default: 0 },
+    ProductHealth: { type: Number, default: 0, min: 0, max: 100 },
+    ProductHealthReduction: { type: Number, default: 0, min: 0 },
     SprintCapacity: { type: Number, default: 0 },
     DevCapacityDays: { type: Number, default: 0 },
     TestCapacityDays: { type: Number, default: 0 },

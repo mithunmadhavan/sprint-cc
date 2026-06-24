@@ -3,11 +3,33 @@ const API_BASE = window.location.protocol === "file:" ? "http://localhost:3000" 
 let roles = [];
 let currentEditId = null;
 let CURRENT_USER = null;
+let AUTH_TOKEN = "";
+
+function clearClientSession() {
+    sessionStorage.removeItem("sc_user");
+    sessionStorage.removeItem("sc_token");
+}
+
+async function authFetch(path, options = {}) {
+    const headers = new Headers(options.headers || {});
+    const token = AUTH_TOKEN || sessionStorage.getItem("sc_token") || "";
+    const requestUrl = String(path).startsWith("http") ? path : `${API_BASE}${path}`;
+    if (token && !headers.has("Authorization")) {
+        headers.set("Authorization", `Bearer ${token}`);
+    }
+    return fetch(requestUrl, {
+        ...options,
+        headers,
+    });
+}
 
 function checkAuth() {
     const user = JSON.parse(sessionStorage.getItem("sc_user") || "null");
-    if (!user || user.role !== "admin") {
-        alert("Admin access required");
+    const role = String(user?.role || user?.serverRole || "").toLowerCase();
+    AUTH_TOKEN = sessionStorage.getItem("sc_token") || "";
+    if (!user || role !== "admin" || !AUTH_TOKEN) {
+        // Do NOT clear the session – just redirect without destroying a valid
+        // editor/viewer session that belongs to the main app.
         window.location.href = "/";
         return false;
     }
@@ -64,7 +86,7 @@ async function loadRoles() {
             capacity: document.getElementById("filterCapacity").value,
         });
 
-        const resp = await fetch(`${API_BASE}/api/roles?${params}`, { cache: "no-store" });
+        const resp = await authFetch(`/api/roles?${params}`, { cache: "no-store" });
         const data = await resp.json();
         if (!resp.ok) throw new Error(data.error || "Failed to load roles");
 
@@ -121,7 +143,7 @@ async function deleteRole(id) {
     if (!window.confirm(`Delete role '${role.name}'?`)) return;
 
     try {
-        const resp = await fetch(`${API_BASE}/api/roles/${id}`, { method: "DELETE" });
+        const resp = await authFetch(`/api/roles/${id}`, { method: "DELETE" });
         const json = await resp.json();
         if (!resp.ok) throw new Error(json.error || "Delete failed");
         showStatus("✓ Role deleted", "ok");
@@ -148,7 +170,7 @@ function initializePageEvents() {
     document.getElementById("cancelBtn").addEventListener("click", closeModal);
     document.getElementById("formRoleType").addEventListener("change", syncCapacityUi);
     document.getElementById("signOutBtn").addEventListener("click", () => {
-        sessionStorage.removeItem("sc_user");
+        clearClientSession();
         window.location.href = "/";
     });
 
@@ -163,7 +185,7 @@ function initializePageEvents() {
         try {
             const url = currentEditId ? `${API_BASE}/api/roles/${currentEditId}` : `${API_BASE}/api/roles`;
             const method = currentEditId ? "PUT" : "POST";
-            const resp = await fetch(url, {
+            const resp = await authFetch(url, {
                 method,
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload),

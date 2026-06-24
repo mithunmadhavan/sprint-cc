@@ -6,6 +6,7 @@ on:
       - development
       - staging
       - production
+      - stage
   workflow_dispatch:
 
 jobs:
@@ -67,7 +68,7 @@ jobs:
             echo "MONGO_URI is empty — aborting" >&2
             exit 1
           fi
-          if [ "${GITHUB_REF_NAME}" = "production" ] || [ "${GITHUB_REF_NAME}" = "development" ]; then
+          if [ "${GITHUB_REF_NAME}" = "production" ] || [ "${GITHUB_REF_NAME}" = "development" ] || [ "${GITHUB_REF_NAME}" = "stage" ]; then
             TARGET_ENV="production"
           else
             TARGET_ENV="preview"
@@ -81,7 +82,7 @@ jobs:
 
       - name: Pull Vercel project settings
         run: |
-          if [ "${GITHUB_REF_NAME}" = "production" ] || [ "${GITHUB_REF_NAME}" = "development" ]; then
+          if [ "${GITHUB_REF_NAME}" = "production" ] || [ "${GITHUB_REF_NAME}" = "development" ] || [ "${GITHUB_REF_NAME}" = "stage" ]; then
             TARGET_ENV="production"
           else
             TARGET_ENV="preview"
@@ -90,7 +91,7 @@ jobs:
 
       - name: Build
         run: |
-          if [ "${GITHUB_REF_NAME}" = "production" ] || [ "${GITHUB_REF_NAME}" = "development" ]; then
+          if [ "${GITHUB_REF_NAME}" = "production" ] || [ "${GITHUB_REF_NAME}" = "development" ] || [ "${GITHUB_REF_NAME}" = "stage" ]; then
             vercel build --prod --token="$VERCEL_TOKEN"
           else
             vercel build --token="$VERCEL_TOKEN"
@@ -98,7 +99,7 @@ jobs:
 
       - name: Deploy
         run: |
-          if [ "${GITHUB_REF_NAME}" = "production" ] || [ "${GITHUB_REF_NAME}" = "development" ]; then
+          if [ "${GITHUB_REF_NAME}" = "production" ] || [ "${GITHUB_REF_NAME}" = "development" ] || [ "${GITHUB_REF_NAME}" = "stage" ]; then
             DEPLOY_URL=$(vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN")
           else
             DEPLOY_URL=$(vercel deploy --prebuilt --token="$VERCEL_TOKEN")

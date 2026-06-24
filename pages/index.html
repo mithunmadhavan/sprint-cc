@@ -32,13 +32,12 @@
       <rect x="12" y="12" width="10" height="10" fill="#ffb900"/>
     </svg>
     <h2>Sprint Planner</h2>
-    <p>Sign in with your Etihad company account.</p>
+    <p>Sign in with your Etihad Account.</p>
     <button class="login-btn" id="ssoLoginBtn">
       <svg width="16" height="16" viewBox="0 0 23 23"><rect x="1" y="1" width="10" height="10" fill="#f25022"/><rect x="12" y="1" width="10" height="10" fill="#7fba00"/><rect x="1" y="12" width="10" height="10" fill="#00a4ef"/><rect x="12" y="12" width="10" height="10" fill="#ffb900"/></svg>
-      Sign in with Microsoft
+      SSO Login
     </button>
     <div class="login-error" id="loginError">Sign-in failed. Please use your @etihad.ae company account.</div>
-    <div class="login-domain-note">tenant: etihad &nbsp;|&nbsp; Entra ID OIDC / MSAL.js</div>
   </div>
 </div>
 
@@ -65,7 +64,6 @@
       <h1>Sprint Planner</h1>
       <p class="sub">Acquire-to-Pay Agile Release Train — team capacity submission</p>
     </div>
-    <div class="flag" id="windowFlag">SELECTION WINDOW</div>
   </div>
 
   <div class="stepbar">
@@ -97,7 +95,6 @@
       <div class="ro-box range"><div class="k">Sprint End</div><div class="v" id="roEnd">—</div></div>
       <div class="ro-box"><div class="k">Submitted Date</div><div class="v" id="roToday">—</div></div>
     </div>
-    <p class="legend-note">Sprint shows the window currently open today. Dates and PI fill automatically.</p>
     <div class="history-strip hidden" id="historyStrip"></div>
   </div>
 
@@ -107,8 +104,15 @@
       <span class="titlewrap"><span class="dot"></span>Team Roster &amp; Availability</span>
       <span class="admin-badge hidden" id="adminEditBadge">Full edit — Admin</span>
     </h2>
-    <div class="normal-note hidden" id="normalNote">
-      You're signed in as a <b>Normal</b> user. You can add team members and edit details. Admins can manage exports and view all team submissions.
+    <div class="roster-toolbar">
+      <div class="product-health-box">
+        <label for="productHealthInput">Product Health %</label>
+        <input type="number" id="productHealthInput" min="0" max="100" step="1" placeholder="e.g., 10">
+        <p class="field-help" id="productHealthHelp">Product health reduces sprint capacity by the entered percentage.</p>
+      </div>
+      <div class="roster-toolbar-actions">
+        <button class="ghost-btn" id="importPrevSprintBtn" type="button">⟳ Import team from previous sprint</button>
+      </div>
     </div>
     <div class="tbl-scroll">
       <table id="rosterTable">
@@ -155,9 +159,13 @@
         <div class="label">Sprint Overhead</div><div class="value" id="kpiOverhead">0.0</div>
         <div class="foot" id="kpiOverheadFoot">BAU/meetings/training from available days</div>
       </div>
+      <div class="kpi product-health">
+        <div class="label">Product Health Impact</div><div class="value" id="kpiProductHealthReduction">0.0</div>
+        <div class="foot" id="kpiProductHealthFoot">0% product health reduction applied</div>
+      </div>
       <div class="kpi sprint-cap">
         <div class="label">Sprint Capacity</div><div class="value" id="kpiSprintCap">0.0</div>
-        <div class="foot">Total Days − Overhead</div>
+        <div class="foot" id="kpiSprintCapFoot">Total Days − Overhead</div>
       </div>
       <div class="kpi bifurcation">
         <div class="label">Dev / Test Bifurcation</div><div class="value kpi-bif-text" id="kpiBifText">—</div>
@@ -200,7 +208,6 @@
     <label for="submissionNotes">Submission Notes</label>
     <textarea id="submissionNotes" placeholder="Any overall notes about this sprint's capacity submission (optional)..."></textarea>
     <div class="submit-row">
-      <div class="meta-line">Submitted by: <b id="metaUser">—</b> &nbsp;|&nbsp; Date: <b id="metaDate">—</b></div>
       <button class="submit-btn" id="submitBtn">Submit Capacity</button>
     </div>
     <div class="status-msg" id="statusMsg"></div>

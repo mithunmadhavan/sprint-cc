@@ -47,6 +47,11 @@ const PAGE_CONFIG = [
     htmlFile: "admin/sprint-teams.html",
     jsFile: "admin/sprint-teams.js",
   },
+  {
+    path: "/admin/users",
+    htmlFile: "admin/users.html",
+    jsFile: "admin/users.js",
+  },
 ];
 
 // Auto-generate routes from config

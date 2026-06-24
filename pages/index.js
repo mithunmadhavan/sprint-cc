@@ -21,16 +21,22 @@ const DEFAULT_ROSTER = [
 ];
 
 let CURRENT_USER = null;
+let AUTH_TOKEN = "";
 let rosterRows = JSON.parse(JSON.stringify(DEFAULT_ROSTER));
 let objectiveValues = [""];
-const TODAY = new Date().toISOString().slice(0,10);
-const CONNECTIVITY_MS = { online: 5000, offline: 30000 };
+let productHealthValue = 0;
+let previousSprintImport = null;
+const TODAY = new Date().toISOString().slice(0, 10);
+const CONNECTIVITY_MS = {
+  online: 300000,
+  offline: 60000
+};
 let connTimer = null;
 
 // System online/offline status (default: true to allow initial attempts)
 let IS_SYSTEM_ONLINE = true;
 
-function todayISO() { return new Date().toISOString().slice(0,10); }
+function todayISO() { return new Date().toISOString().slice(0, 10); }
 function getRoleOptions() {
   return ROLE_CONFIG.map((role) => role.name);
 }
@@ -58,7 +64,7 @@ function getTeamNameByKey(teamKey) {
 function fmtDate(iso) {
   if (!iso) return "—";
   const d = new Date(iso + "T00:00:00");
-  return d.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});
+  return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
 
 function toDateKey(value) {
@@ -74,33 +80,78 @@ function normalizeObjectives(values = []) {
   return values.map((value) => String(value || "").trim()).filter(Boolean);
 }
 
-function getSubmissionFieldState(sprintInfo) {
-   if (!sprintInfo?.start || !sprintInfo?.end) {
-     return {
-       objectivesEditable: false,
-       sprintGoalEditable: false,
-       goalsAchievedEditable: false,
-       sprintGoalDisplayMode: "card",
-       goalsAchievedDisplayMode: "card",
-       rosterEditable: false,
-     };
-   }
+function clampPercentage(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(0, Math.min(100, parsed));
+}
 
-   const start = toDateKey(sprintInfo.start);
-   const end = toDateKey(sprintInfo.end);
-   const sprintStartGraceEnd = toDateKey(new Date(new Date(sprintInfo.start).getTime() + 7 * 24 * 60 * 60 * 1000));
-   const goalsAchievedWindowEnd = toDateKey(new Date(new Date(sprintInfo.end).getTime() + 7 * 24 * 60 * 60 * 1000));
-   const sprintGoalEditable = TODAY <= sprintStartGraceEnd;
-   const goalsAchievedEditable = TODAY >= end && TODAY <= goalsAchievedWindowEnd;
-   return {
-     objectivesEditable: TODAY <= sprintStartGraceEnd,
-     sprintGoalEditable,
-     goalsAchievedEditable,
-     sprintGoalDisplayMode: sprintGoalEditable ? "input" : "card",
-     goalsAchievedDisplayMode: goalsAchievedEditable ? "input" : "card",
-     rosterEditable: TODAY < start,
-   };
- }
+function setProductHealth(value = 0) {
+  productHealthValue = clampPercentage(value);
+  const input = document.getElementById("productHealthInput");
+  if (input) {
+    input.value = String(productHealthValue);
+  }
+}
+
+function getSortedSprintCalendar() {
+  return [...SPRINT_CALENDAR].sort((a, b) => {
+    const startDiff = a.start.localeCompare(b.start);
+    if (startDiff !== 0) return startDiff;
+    const endDiff = a.end.localeCompare(b.end);
+    if (endDiff !== 0) return endDiff;
+    return a.sprint.localeCompare(b.sprint, undefined, { numeric: true, sensitivity: "base" });
+  });
+}
+
+function getPreviousSprintInfo(currentSprintNo) {
+  const sorted = getSortedSprintCalendar();
+  const index = sorted.findIndex((item) => item.sprint === currentSprintNo);
+  return index > 0 ? sorted[index - 1] : null;
+}
+
+function getSubmissionFieldState(sprintInfo) {
+  const userCanEdit = canEditSubmission();
+  if (!userCanEdit) {
+    return {
+      objectivesEditable: false,
+      sprintGoalEditable: false,
+      goalsAchievedEditable: false,
+      sprintGoalDisplayMode: "card",
+      goalsAchievedDisplayMode: "card",
+      rosterEditable: false,
+      userCanEdit,
+    };
+  }
+
+  if (!sprintInfo?.start || !sprintInfo?.end) {
+    return {
+      objectivesEditable: false,
+      sprintGoalEditable: false,
+      goalsAchievedEditable: false,
+      sprintGoalDisplayMode: "card",
+      goalsAchievedDisplayMode: "card",
+      rosterEditable: false,
+      userCanEdit,
+    };
+  }
+
+  const start = toDateKey(sprintInfo.start);
+  const end = toDateKey(sprintInfo.end);
+  const sprintStartGraceEnd = toDateKey(new Date(new Date(sprintInfo.start).getTime() + 7 * 24 * 60 * 60 * 1000));
+  const goalsAchievedWindowEnd = toDateKey(new Date(new Date(sprintInfo.end).getTime() + 7 * 24 * 60 * 60 * 1000));
+  const sprintGoalEditable = TODAY <= sprintStartGraceEnd;
+  const goalsAchievedEditable = TODAY >= end && TODAY <= goalsAchievedWindowEnd;
+  return {
+    objectivesEditable: TODAY <= sprintStartGraceEnd,
+    sprintGoalEditable,
+    goalsAchievedEditable,
+    sprintGoalDisplayMode: sprintGoalEditable ? "input" : "card",
+    goalsAchievedDisplayMode: goalsAchievedEditable ? "input" : "card",
+    rosterEditable: TODAY <= sprintStartGraceEnd,
+    userCanEdit,
+  };
+}
 
 function setFieldHelp(id, text, editable) {
   const el = document.getElementById(id);
@@ -166,6 +217,7 @@ function renderObjectives() {
 function setSubmissionMeta(record = null) {
   document.getElementById("sprintGoalInput").value = record?.SprintGoal ?? "";
   document.getElementById("goalsAchievedInput").value = record?.GoalsAchieved ?? "";
+  setProductHealth(record?.ProductHealth ?? 0);
   objectiveValues = Array.isArray(record?.Objectives) && record.Objectives.length
     ? [...record.Objectives]
     : record?.Objective
@@ -200,90 +252,120 @@ function updateGoalsAchievedColor() {
 }
 
 function syncSubmissionFieldState() {
-    const sprintInfo = getSelectedSprintInfo();
-    const {
-      objectivesEditable,
-      sprintGoalEditable,
-      goalsAchievedEditable,
-      sprintGoalDisplayMode,
-      goalsAchievedDisplayMode,
-      rosterEditable,
-    } = getSubmissionFieldState(sprintInfo);
-   const addObjectiveBtn = document.getElementById("addObjectiveBtn");
-   const sprintGoalInput = document.getElementById("sprintGoalInput");
-   const goalsAchievedInput = document.getElementById("goalsAchievedInput");
-   const sprintGoalCard = document.getElementById("sprintGoalCard");
-   const goalsAchievedCard = document.getElementById("goalsAchievedCard");
-   const addRowBtn = document.getElementById("addRowBtn");
-   const sprintGoalValue = sprintGoalInput.value !== "" ? sprintGoalInput.value : "N/A";
-   const goalsAchievedValue = goalsAchievedInput.value !== "" ? goalsAchievedInput.value : "N/A";
+  const sprintInfo = getSelectedSprintInfo();
+  const {
+    objectivesEditable,
+    sprintGoalEditable,
+    goalsAchievedEditable,
+    sprintGoalDisplayMode,
+    goalsAchievedDisplayMode,
+    rosterEditable,
+    userCanEdit,
+  } = getSubmissionFieldState(sprintInfo);
+  const addObjectiveBtn = document.getElementById("addObjectiveBtn");
+  const sprintGoalInput = document.getElementById("sprintGoalInput");
+  const goalsAchievedInput = document.getElementById("goalsAchievedInput");
+  const sprintGoalCard = document.getElementById("sprintGoalCard");
+  const goalsAchievedCard = document.getElementById("goalsAchievedCard");
+  const submissionNotes = document.getElementById("submissionNotes");
+  const productHealthInput = document.getElementById("productHealthInput");
+  const productHealthHelp = document.getElementById("productHealthHelp");
+  const importPrevSprintBtn = document.getElementById("importPrevSprintBtn");
+  const addRowBtn = document.getElementById("addRowBtn");
+  const sprintGoalValue = sprintGoalInput.value !== "" ? sprintGoalInput.value : "N/A";
+  const goalsAchievedValue = goalsAchievedInput.value !== "" ? goalsAchievedInput.value : "N/A";
 
-    // Sprint Goal: Card by default, input when editable
-    if (sprintGoalDisplayMode === "card") {
-      sprintGoalInput.classList.add("hidden");
-      sprintGoalCard.classList.remove("hidden");
-      sprintGoalCard.innerHTML = `<div>${sprintGoalValue === "N/A" ? "—" : sprintGoalValue}</div>`;
-    } else {
-      sprintGoalInput.classList.remove("hidden");
-      sprintGoalCard.classList.add("hidden");
-    }
+  // Sprint Goal: Card by default, input when editable
+  if (sprintGoalDisplayMode === "card") {
+    sprintGoalInput.classList.add("hidden");
+    sprintGoalCard.classList.remove("hidden");
+    sprintGoalCard.innerHTML = `<div>${sprintGoalValue === "N/A" ? "—" : sprintGoalValue}</div>`;
+  } else {
+    sprintGoalInput.classList.remove("hidden");
+    sprintGoalCard.classList.add("hidden");
+  }
 
-    // Goals Achieved: Card by default, input when editable
-    if (goalsAchievedDisplayMode === "card") {
-      goalsAchievedInput.classList.add("hidden");
-      goalsAchievedCard.classList.remove("hidden");
-      const gaValue = sprintInfo && TODAY < toDateKey(sprintInfo.end) ? "—" : goalsAchievedValue;
-      goalsAchievedCard.innerHTML = `<div>${gaValue === "N/A" ? "—" : gaValue}</div>`;
-    } else {
-      goalsAchievedInput.classList.remove("hidden");
-      goalsAchievedCard.classList.add("hidden");
-    }
+  // Goals Achieved: Card by default, input when editable
+  if (goalsAchievedDisplayMode === "card") {
+    goalsAchievedInput.classList.add("hidden");
+    goalsAchievedCard.classList.remove("hidden");
+    const gaValue = sprintInfo && TODAY < toDateKey(sprintInfo.end) ? "—" : goalsAchievedValue;
+    goalsAchievedCard.innerHTML = `<div>${gaValue === "N/A" ? "—" : gaValue}</div>`;
+  } else {
+    goalsAchievedInput.classList.remove("hidden");
+    goalsAchievedCard.classList.add("hidden");
+  }
 
-    sprintGoalInput.disabled = !sprintGoalEditable;
-    goalsAchievedInput.disabled = !goalsAchievedEditable;
-    addObjectiveBtn.disabled = !objectivesEditable;
-    addRowBtn.disabled = !rosterEditable;
-    addRowBtn.title = rosterEditable ? "" : "Team roster is locked once the sprint has started";
+  sprintGoalInput.disabled = !sprintGoalEditable;
+  goalsAchievedInput.disabled = !goalsAchievedEditable;
+  addObjectiveBtn.disabled = !objectivesEditable;
+  addRowBtn.disabled = !rosterEditable || !userCanEdit;
+  addRowBtn.title = !userCanEdit
+    ? "Viewer role is read-only"
+    : (rosterEditable ? "" : "Team roster is locked one week after sprint start");
+  submissionNotes.disabled = !userCanEdit;
+  productHealthInput.disabled = !rosterEditable || !userCanEdit;
+  importPrevSprintBtn.disabled = !rosterEditable || !userCanEdit || !previousSprintImport?.record;
+  importPrevSprintBtn.title = !userCanEdit
+    ? "Viewer role is read-only"
+    : (!rosterEditable
+      ? "Import is only available through one week after sprint start"
+      : (previousSprintImport?.record
+        ? `Import roster from Sprint ${previousSprintImport.sprint}`
+        : "No previous sprint roster is available for this team"));
+  productHealthHelp.textContent = sprintInfo
+    ? (rosterEditable
+      ? `Editable through ${fmtDate(new Date(new Date(sprintInfo.start).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10))}. Product health reduces sprint capacity by the entered percentage.`
+      : `Locked after ${fmtDate(new Date(new Date(sprintInfo.start).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10))}. Product health reduces sprint capacity by the entered percentage.`)
+    : "Select a sprint to manage product health.";
+  productHealthHelp.className = `field-help ${rosterEditable ? "editable" : "locked"}`;
 
-    setFieldHelp(
-      "sprintGoalHelp",
-      sprintInfo
-        ? (sprintGoalEditable
-          ? `Editable through ${fmtDate(new Date(new Date(sprintInfo.start).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10))}.`
-          : `Locked after ${fmtDate(new Date(new Date(sprintInfo.start).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10))}.`)
-        : "Select a sprint to manage sprint goal.",
-      sprintGoalEditable
-    );
-    setFieldHelp(
-      "goalsAchievedHelp",
-      sprintInfo
-        ? (goalsAchievedEditable
-          ? `Editable from ${fmtDate(sprintInfo.end)} through one week after.`
-          : (TODAY < toDateKey(sprintInfo.end)
-            ? `N/A until ${fmtDate(sprintInfo.end)}.`
-            : `Locked after ${fmtDate(new Date(new Date(sprintInfo.end).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10))}.`))
-        : "Select a sprint to manage goals achieved.",
-      goalsAchievedEditable
-    );
-    setFieldHelp(
-      "objectivesHelp",
-      sprintInfo
-        ? (objectivesEditable
-          ? `Objectives are editable through ${fmtDate(new Date(new Date(sprintInfo.start).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10))}.`
-          : `Objectives locked after ${fmtDate(new Date(new Date(sprintInfo.start).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10))}.`)
-        : "Select a sprint to manage objectives.",
-      objectivesEditable
-    );
+  setFieldHelp(
+    "sprintGoalHelp",
+    sprintInfo
+      ? (sprintGoalEditable
+        ? `Editable through ${fmtDate(new Date(new Date(sprintInfo.start).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10))}.`
+        : `Locked after ${fmtDate(new Date(new Date(sprintInfo.start).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10))}.`)
+      : "Select a sprint to manage sprint goal.",
+    sprintGoalEditable
+  );
+  setFieldHelp(
+    "goalsAchievedHelp",
+    sprintInfo
+      ? (goalsAchievedEditable
+        ? `Editable from ${fmtDate(sprintInfo.end)} through one week after.`
+        : (TODAY < toDateKey(sprintInfo.end)
+          ? `N/A until ${fmtDate(sprintInfo.end)}.`
+          : `Locked after ${fmtDate(new Date(new Date(sprintInfo.end).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10))}.`))
+      : "Select a sprint to manage goals achieved.",
+    goalsAchievedEditable
+  );
+  setFieldHelp(
+    "objectivesHelp",
+    sprintInfo
+      ? (objectivesEditable
+        ? `Objectives are editable through ${fmtDate(new Date(new Date(sprintInfo.start).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10))}.`
+        : `Objectives locked after ${fmtDate(new Date(new Date(sprintInfo.start).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10))}.`)
+      : "Select a sprint to manage objectives.",
+    objectivesEditable
+  );
 
-    renderObjectives();
-    updateGoalsAchievedColor();
- }
+  renderObjectives();
+  updateGoalsAchievedColor();
+}
 
 function showLoading(msg) {
-  document.getElementById("loadingLabel").textContent = msg || "Loading…"; 
-  document.getElementById("loadingOverlay").classList.add("show"); 
+  document.getElementById("loadingLabel").textContent = msg || "Loading…";
+  document.getElementById("loadingOverlay").classList.add("show");
 }
 function hideLoading() { document.getElementById("loadingOverlay").classList.remove("show"); }
+
+function showStatus(msg, type) {
+  const el = document.getElementById("statusMsg");
+  if (!el) return;
+  el.textContent = msg;
+  el.className = `status-msg ${type}`;
+}
 
 function setConfigWarning(messages = []) {
   const el = document.getElementById("configWarn");
@@ -299,16 +381,21 @@ function setConfigWarning(messages = []) {
 function syncConfigDependentUi() {
   const hasTeams = TEAMS.length > 0;
   const hasRoles = ROLE_CONFIG.length > 0;
+  const canWrite = canEditSubmission();
   const teamSel = document.getElementById("teamSel");
   const addRowBtn = document.getElementById("addRowBtn");
   const submitBtn = document.getElementById("submitBtn");
 
   teamSel.disabled = !hasTeams;
-  addRowBtn.disabled = !hasRoles;
-  submitBtn.disabled = !hasTeams || !hasRoles;
+  addRowBtn.disabled = !hasRoles || !canWrite;
+  submitBtn.disabled = !hasTeams || !hasRoles || !canWrite;
 
-  addRowBtn.title = hasRoles ? "" : "Roles must be loaded from backend first";
-  submitBtn.title = (!hasTeams || !hasRoles) ? "Teams and roles must load from backend before submitting" : "";
+  addRowBtn.title = !canWrite
+    ? "Viewer role is read-only"
+    : (hasRoles ? "" : "Roles must be loaded from backend first");
+  submitBtn.title = !canWrite
+    ? "Viewer role cannot submit"
+    : ((!hasTeams || !hasRoles) ? "Teams and roles must load from backend before submitting" : "");
 }
 
 function setConnectivityState(isOnline) {
@@ -339,6 +426,63 @@ function scheduleConnectivityCheck(isOnline) {
   connTimer = setTimeout(checkBackendConnectivity, isOnline ? CONNECTIVITY_MS.online : CONNECTIVITY_MS.offline);
 }
 
+function mapServerRoleToUiRole(role) {
+  const normalized = String(role || "").toLowerCase();
+  if (["admin", "editor", "viewer"].includes(normalized)) return normalized;
+  return "viewer";
+}
+
+function extractNameFromEmail(email) {
+  return String(email || "").split("@")[0] || "user";
+}
+
+function clearClientSession() {
+  AUTH_TOKEN = "";
+  CURRENT_USER = null;
+  sessionStorage.removeItem("sc_user");
+  sessionStorage.removeItem("sc_token");
+}
+
+function applySessionFromAuthResult(authResult) {
+  const user = authResult?.user || {};
+  const email = String(user.email || "").trim();
+  const name = String(user.name || user.username || extractNameFromEmail(email)).trim() || extractNameFromEmail(email);
+  const role = mapServerRoleToUiRole(user.role);
+
+  AUTH_TOKEN = String(authResult?.token || "");
+  CURRENT_USER = {
+    name,
+    email,
+    role,
+    serverRole: user.role || "Viewer",
+  };
+
+  sessionStorage.setItem("sc_user", JSON.stringify(CURRENT_USER));
+  sessionStorage.setItem("sc_token", AUTH_TOKEN);
+}
+
+async function apiFetch(path, options = {}) {
+  const headers = new Headers(options.headers || {});
+  const token = AUTH_TOKEN || sessionStorage.getItem("sc_token") || "";
+
+  if (token && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  return fetch(`${API_BASE}${path}`, {
+    ...options,
+    headers,
+  });
+}
+
+function currentUserRole() {
+  return String(CURRENT_USER?.role || "").toLowerCase();
+}
+
+function canEditSubmission() {
+  return currentUserRole() === "admin" || currentUserRole() === "editor";
+}
+
 async function checkBackendConnectivity() {
   let isOnline = false;
   try {
@@ -358,74 +502,158 @@ async function checkBackendConnectivity() {
    AUTH
 ═══════════════════════════════════════════════════════════════════ */
 function mockSignIn() {
-  const email = prompt("MOCK SSO — enter your email (@etihad.ae):", "firstname.lastname@etihad.ae");
+  const email = prompt("MOCK SSO — enter your email (@etihad.ae):", "test@etihad.ae");
   if (!email) return null;
   if (!email.toLowerCase().endsWith("@" + CONFIG.DOMAIN_HINT)) {
     document.getElementById("loginError").style.display = "block"; return null;
   }
-  const isAdmin = email.toLowerCase().includes("admin") ||
-    confirm("MOCK SSO — grant Admin role?");
-  const name = email.split("@")[0].split(".").map(s => s.charAt(0).toUpperCase()+s.slice(1)).join(" ");
-  return { name, email, role: isAdmin ? "admin" : "normal" };
+  const password = prompt("MOCK SSO — enter password:", "");
+  if (!password) return null;
+  return { email, password };
 }
 
-document.getElementById("ssoLoginBtn").addEventListener("click", () => {
+async function signInWithBackend(credentials) {
+  const resp = await fetch(`${API_BASE}/api/auth/signin`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(credentials),
+  });
+
+  const json = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    throw new Error(json.error || `Sign-in failed (${resp.status})`);
+  }
+  return json;
+}
+
+document.getElementById("ssoLoginBtn").addEventListener("click", async () => {
   document.getElementById("loginError").style.display = "none";
-  const user = mockSignIn();
-  if (!user) return;
-  CURRENT_USER = user;
-  sessionStorage.setItem("sc_user", JSON.stringify(user));
-  bootApp();
+  const creds = mockSignIn();
+  if (!creds) return;
+
+  try {
+    const authResult = await signInWithBackend(creds);
+    applySessionFromAuthResult(authResult);
+    bootApp();
+  } catch (error) {
+    const el = document.getElementById("loginError");
+    el.textContent = error.message || "Sign-in failed. Please check your credentials.";
+    el.style.display = "block";
+  }
 });
 
 document.getElementById("signOutBtn").addEventListener("click", () => {
-  sessionStorage.removeItem("sc_user"); location.reload();
+  clearClientSession();
+  location.reload();
 });
 
-(function tryResume() {
+(async function tryResume() {
   const c = sessionStorage.getItem("sc_user");
-  if (c) { CURRENT_USER = JSON.parse(c); bootApp(); }
+  const t = sessionStorage.getItem("sc_token");
+  if (!c || !t) return;
+
+  try {
+    AUTH_TOKEN = t;
+    const resp = await apiFetch("/api/auth/me", { cache: "no-store" });
+
+    if (resp.status === 401 || resp.status === 403) {
+      // Token explicitly rejected by the server – wipe the stale session.
+      clearClientSession();
+      return;
+    }
+
+    if (!resp.ok) {
+      // Transient server/network error (5xx, timeout, etc.)
+      // Fall back to cached user data and boot the app anyway.
+      try {
+        const cachedUser = JSON.parse(c);
+        applySessionFromAuthResult({ token: t, user: cachedUser });
+        bootApp();
+      } catch (e) {
+        // Cached data is corrupted – wipe session and show login
+        clearClientSession();
+      }
+      return;
+    }
+
+    const me = await resp.json();
+    applySessionFromAuthResult({ token: t, user: me.user });
+    bootApp();
+  } catch (_e) {
+    // Network error – fall back to cached session data and boot the app.
+    try {
+      const cachedUser = JSON.parse(c);
+      applySessionFromAuthResult({ token: t, user: cachedUser });
+      bootApp();
+    } catch (e) {
+      // Cached data is corrupted – wipe session and show login
+      clearClientSession();
+    }
+  }
 })();
 
 /* ═══════════════════════════════════════════════════════════════════
    BOOT
 ═══════════════════════════════════════════════════════════════════ */
 function bootApp() {
-   document.getElementById("loginGate").style.display  = "none";
-   document.getElementById("appWrap").style.display    = "block";
+  const loginGate = document.getElementById("loginGate");
+  const appWrap = document.getElementById("appWrap");
 
-   const initials = CURRENT_USER.name.split(" ").map(s=>s[0]).slice(0,2).join("").toUpperCase();
-   document.getElementById("userAvatar").textContent      = initials;
-   document.getElementById("userDisplayName").textContent = `${CURRENT_USER.name} (${CURRENT_USER.email})`;
-   const pill = document.getElementById("roleBadge");
-   pill.textContent = CURRENT_USER.role.toUpperCase();
-   pill.className   = "role-pill " + CURRENT_USER.role;
-   document.getElementById("metaUser").textContent = `${CURRENT_USER.name} (${CURRENT_USER.email})`;
-   document.getElementById("roToday").textContent  = fmtDate(TODAY);
-   document.getElementById("metaDate").textContent = fmtDate(TODAY);
+  // Safety check – if critical elements don't exist, don't attempt to boot
+  if (!loginGate || !appWrap) {
+    console.error("Critical DOM elements missing. Cannot boot app.");
+    return;
+  }
 
-   const isAdmin = CURRENT_USER.role === "admin";
-   document.getElementById("addRowBtn").style.display    = "inline-block";
-   document.getElementById("exportBtn").style.display    = isAdmin ? "inline-flex"  : "none";
-   document.getElementById("adminEditBadge").style.display = isAdmin ? "inline-block" : "none";
-   document.getElementById("normalNote").style.display   = isAdmin ? "none" : "block";
-   document.getElementById("allTeamsCard").style.display = "block";
-   document.getElementById("adminEntryLink").style.display = isAdmin ? "inline" : "none";
+  loginGate.style.display = "none";
+  appWrap.style.display = "block";
 
-   Promise.all([loadSprintCalendar(), loadRolesConfig(), loadTeams()]).then(() => {
-     const warnings = [];
-     if (TEAMS.length === 0) warnings.push("No active teams were returned by the backend.");
-     if (ROLE_CONFIG.length === 0) warnings.push("No roles were returned by the backend.");
-     if (SPRINT_CALENDAR.length === 0) warnings.push("No sprint calendar records were returned by the backend.");
-     setConfigWarning(warnings);
-     initTeamDropdown();
-     initSprintAutocomplete();
-      syncConfigDependentUi();
-     updateReadout();
-     renderRoster();
-        renderAllTeams();
-   });
- }
+  const initials = CURRENT_USER.name.split(" ").map(s => s[0]).slice(0, 2).join("").toUpperCase();
+  const avatar = document.getElementById("userAvatar");
+  const displayName = document.getElementById("userDisplayName");
+  const pill = document.getElementById("roleBadge");
+  const roToday = document.getElementById("roToday");
+
+  if (avatar) avatar.textContent = initials;
+  if (displayName) displayName.textContent = `${CURRENT_USER.name} (${CURRENT_USER.email})`;
+  if (pill) {
+    pill.textContent = String(CURRENT_USER.serverRole || CURRENT_USER.role).toUpperCase();
+    pill.className = "role-pill " + CURRENT_USER.role;
+  }
+  if (roToday) roToday.textContent = fmtDate(TODAY);
+
+  const isAdmin = CURRENT_USER.role === "admin";
+  const canWrite = canEditSubmission();
+
+  const addRowBtn = document.getElementById("addRowBtn");
+  const importBtn = document.getElementById("importPrevSprintBtn");
+  const exportBtn = document.getElementById("exportBtn");
+  const adminBadge = document.getElementById("adminEditBadge");
+  const adminLink = document.getElementById("adminEntryLink");
+  const allTeamsCard = document.getElementById("allTeamsCard");
+
+  if (addRowBtn) addRowBtn.style.display = canWrite ? "inline-block" : "none";
+  if (importBtn) importBtn.style.display = canWrite ? "inline-flex" : "none";
+  if (exportBtn) exportBtn.style.display = isAdmin ? "inline-flex" : "none";
+  if (adminBadge) adminBadge.style.display = isAdmin ? "inline-block" : "none";
+  if (adminLink) adminLink.style.display = isAdmin ? "inline" : "none";
+  if (allTeamsCard) allTeamsCard.style.display = "block";
+
+
+  Promise.all([loadSprintCalendar(), loadRolesConfig(), loadTeams()]).then(() => {
+    const warnings = [];
+    if (TEAMS.length === 0) warnings.push("No active teams were returned by the backend.");
+    if (ROLE_CONFIG.length === 0) warnings.push("No roles were returned by the backend.");
+    if (SPRINT_CALENDAR.length === 0) warnings.push("No sprint calendar records were returned by the backend.");
+    setConfigWarning(warnings);
+    initTeamDropdown();
+    initSprintAutocomplete();
+    syncConfigDependentUi();
+    updateReadout();
+    renderRoster();
+    renderAllTeams();
+  });
+}
 
 /* ═══════════════════════════════════════════════════════════════════
    DROPDOWNS
@@ -504,6 +732,8 @@ function getDefaultSprintChoices() {
 
 function updateSprintWindowFlag() {
   const flag = document.getElementById("windowFlag");
+  if (!flag) return;  // Exit safely if element doesn't exist
+
   const { currentIndex, nextIndex } = getDefaultSprintChoices();
 
   if (currentIndex === -1) {
@@ -513,7 +743,7 @@ function updateSprintWindowFlag() {
     flag.classList.add("state-warning");
     flag.classList.remove("state-open");
   } else {
-    flag.textContent = "SELECTION WINDOW OPEN — SHOWING PREVIOUS / CURRENT / NEXT";
+    flag.textContent = "";
     flag.classList.add("state-open");
     flag.classList.remove("state-warning");
   }
@@ -558,7 +788,7 @@ function searchSprints(query) {
     sprintAcAbortController = new AbortController();
     try {
       const params = new URLSearchParams({ sprint: trimmed });
-      const resp = await fetch(`${API_BASE}/api/sprints?${params.toString()}`, {
+      const resp = await apiFetch(`/api/sprints?${params.toString()}`, {
         signal: sprintAcAbortController.signal,
         cache: "no-store",
       });
@@ -680,25 +910,35 @@ async function initSprintAutocomplete() {
 }
 
 function updateReadout() {
-  const v    = document.getElementById("sprintSel").value;
+  const sprintSel = document.getElementById("sprintSel");
+  if (!sprintSel) return;
+
+  const v = sprintSel.value;
   const info = SPRINT_CALENDAR.find(s => s.sprint === v);
-  document.getElementById("roPI").textContent    = info ? `PI ${info.pi}` : "—";
-  document.getElementById("roStart").textContent = info ? fmtDate(info.start) : "—";
-  document.getElementById("roEnd").textContent   = info ? fmtDate(info.end)   : "—";
+
+  const roPI = document.getElementById("roPI");
+  const roStart = document.getElementById("roStart");
+  const roEnd = document.getElementById("roEnd");
+
+  if (roPI) roPI.textContent = info ? `PI ${info.pi}` : "—";
+  if (roStart) roStart.textContent = info ? fmtDate(info.start) : "—";
+  if (roEnd) roEnd.textContent = info ? fmtDate(info.end) : "—";
+
   syncSubmissionFieldState();
 }
 
 async function onTeamSprintChange() {
   updateReadout();
-  const teamKey   = document.getElementById("teamSel").value;
+  const teamKey = document.getElementById("teamSel").value;
   const sprintVal = document.getElementById("sprintSel").value;
-  const strip     = document.getElementById("historyStrip");
+  const strip = document.getElementById("historyStrip");
 
   loadAllTeams();
 
   if (!teamKey || !sprintVal) {
     strip.style.display = "none";
     document.getElementById("submissionNotes").value = "";
+    previousSprintImport = null;
     setSubmissionMeta(null);
     syncSubmissionFieldState();
     return;
@@ -707,7 +947,7 @@ async function onTeamSprintChange() {
   const rec = await spRead(teamKey, sprintVal);
 
   if (rec) {
-    strip.style.display  = "block";
+    strip.style.display = "block";
     strip.innerHTML = `⟳ Existing record found for <b>${getTeamNameByKey(teamKey)}</b> Sprint <b>${sprintVal}</b> — saved by <b>${rec.submittedBy || rec.SubmittedBy}</b> on <b>${fmtDate(rec.submittedDate || rec.SubmittedDate)}</b>. Submitting will replace this record.`;
     if (rec.Roster && Array.isArray(rec.Roster)) {
       rosterRows = JSON.parse(JSON.stringify(rec.Roster));
@@ -715,12 +955,21 @@ async function onTeamSprintChange() {
     document.getElementById("submissionNotes").value = rec.Notes || rec.SprintNotes || "";
     setSubmissionMeta(rec);
   } else {
-    strip.style.display  = "block";
+    strip.style.display = "block";
     strip.innerHTML = `No existing submission found for this Team + Sprint — submitting will create a new record.`;
     rosterRows = JSON.parse(JSON.stringify(DEFAULT_ROSTER));
     document.getElementById("submissionNotes").value = "";
     setSubmissionMeta(null);
   }
+
+  const previousSprint = getPreviousSprintInfo(sprintVal);
+  const previousRecord = previousSprint
+    ? await fetchSubmissionRecord(teamKey, previousSprint.sprint, { showLoader: false })
+    : null;
+  previousSprintImport = previousSprint && previousRecord
+    ? { sprint: previousSprint.sprint, record: previousRecord }
+    : null;
+
   syncSubmissionFieldState();
   renderRoster();
 }
@@ -729,147 +978,151 @@ async function onTeamSprintChange() {
    API FUNCTIONS
 ═══════════════════════════════════════════════════════════════════ */
 async function apiJson(path, options) {
-  const resp = await fetch(`${API_BASE}${path}`, options);
+  const resp = await apiFetch(path, options);
   if (!resp.ok) {
     let msg = `HTTP ${resp.status}`;
     try {
       const err = await resp.json();
       msg = err.error || msg;
-    } catch (e) {}
+    } catch (e) { }
     throw new Error(msg);
   }
   return resp.json();
 }
 
 async function spRead(teamKey, sprintNo) {
+  return fetchSubmissionRecord(teamKey, sprintNo, { showLoader: true });
+}
+
+async function fetchSubmissionRecord(teamKey, sprintNo, { showLoader = true } = {}) {
   // Only call API if system is online
   if (!ensureSystemOnline()) {
     return null;
   }
 
   try {
-    showLoading("Loading existing data from backend…");
+    if (showLoader) showLoading("Loading existing data from backend…");
     const json = await apiJson(`/api/submissions/${encodeURIComponent(teamKey)}/${encodeURIComponent(sprintNo)}`);
-    hideLoading();
+    if (showLoader) hideLoading();
     if (json.found && json.record) {
       return json.record;
     }
     return null;
-  } catch(e) {
-    hideLoading();
+  } catch (e) {
+    if (showLoader) hideLoading();
     return null;
   }
 }
 
 async function spUpsert(payload) {
-   // Only call API if system is online
-   if (!ensureSystemOnline()) {
-     return { success: false, error: "System is offline" };
-   }
-
-   try {
-      showLoading("Saving to backend…");
-      const json = await apiJson("/api/submissions/upsert", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-      hideLoading();
-      return json;
-    } catch(e) {
-      hideLoading();
-      return { success: false, error: String(e) };
-    }
+  // Only call API if system is online
+  if (!ensureSystemOnline()) {
+    return { success: false, error: "System is offline" };
   }
+
+  try {
+    showLoading("Saving to backend…");
+    const json = await apiJson("/api/submissions/upsert", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    hideLoading();
+    return json;
+  } catch (e) {
+    hideLoading();
+    return { success: false, error: String(e) };
+  }
+}
 
 async function loadSprintCalendar() {
-   // Only call API if system is online
-   if (!ensureSystemOnline()) {
-     SPRINT_CALENDAR = [];
-     return;
-   }
-
-   try {
-      const json = await apiJson("/api/sprints", { cache: "no-store" });
-      if (json.ok && json.sprints) {
-        SPRINT_CALENDAR = json.sprints.map(s => ({
-          sprint: s.sprint,
-          pi: s.pi,
-          start: s.start.slice(0, 10),
-          end: s.end.slice(0, 10)
-        }));
-      }
-    } catch(e) {
-      // Fallback to empty calendar if API fails
-      console.error("Failed to load sprint calendar:", e);
-      SPRINT_CALENDAR = [];
-    }
+  // Only call API if system is online
+  if (!ensureSystemOnline()) {
+    SPRINT_CALENDAR = [];
+    return;
   }
 
-  async function loadTeams() {
-     // Only call API if system is online
-     if (!ensureSystemOnline()) {
-       TEAMS = [];
-       return;
-     }
-
-     TEAMS = [];
-     try {
-       const json = await apiJson("/api/teams?status=active", { cache: "no-store" });
-       if (json.ok && Array.isArray(json.teams)) {
-         TEAMS = json.teams.map((team) => ({
-           name: team.name,
-           key: team.key,
-         }));
-       }
-     } catch (e) {
-       console.error("Failed to load teams config:", e);
+  try {
+    const json = await apiJson("/api/sprints", { cache: "no-store" });
+    if (json.ok && json.sprints) {
+      SPRINT_CALENDAR = json.sprints.map(s => ({
+        sprint: s.sprint,
+        pi: s.pi,
+        start: s.start.slice(0, 10),
+        end: s.end.slice(0, 10)
+      }));
     }
+  } catch (e) {
+    // Fallback to empty calendar if API fails
+    console.error("Failed to load sprint calendar:", e);
+    SPRINT_CALENDAR = [];
+  }
+}
+
+async function loadTeams() {
+  // Only call API if system is online
+  if (!ensureSystemOnline()) {
+    TEAMS = [];
+    return;
   }
 
-   async function loadRolesConfig() {
-      // Only call API if system is online
-      if (!ensureSystemOnline()) {
-        ROLE_CONFIG = [];
-        return;
-      }
-
-      ROLE_CONFIG = [];
-      try {
-        const json = await apiJson("/api/roles", { cache: "no-store" });
-        if (json.ok && Array.isArray(json.roles)) {
-          ROLE_CONFIG = json.roles.map((role) => ({
-            name: role.name,
-            roleType: role.roleType,
-            isCapacity: role.isCapacity !== false,
-          }));
-        }
-      } catch (e) {
-        console.error("Failed to load roles config:", e);
-      }
+  TEAMS = [];
+  try {
+    const json = await apiJson("/api/teams?status=active", { cache: "no-store" });
+    if (json.ok && Array.isArray(json.teams)) {
+      TEAMS = json.teams.map((team) => ({
+        name: team.name,
+        key: team.key,
+      }));
     }
+  } catch (e) {
+    console.error("Failed to load teams config:", e);
+  }
+}
 
- /* ═══════════════════════════════════════════════════════════════════
-    ROSTER TABLE
- ═══════════════════════════════════════════════════════════════════ */
-function roleSlug(r) { return String(r || "unknown").toLowerCase().replace(/\s+/g,""); }
+async function loadRolesConfig() {
+  // Only call API if system is online
+  if (!ensureSystemOnline()) {
+    ROLE_CONFIG = [];
+    return;
+  }
+
+  ROLE_CONFIG = [];
+  try {
+    const json = await apiJson("/api/roles", { cache: "no-store" });
+    if (json.ok && Array.isArray(json.roles)) {
+      ROLE_CONFIG = json.roles.map((role) => ({
+        name: role.name,
+        roleType: role.roleType,
+        isCapacity: role.isCapacity !== false,
+      }));
+    }
+  } catch (e) {
+    console.error("Failed to load roles config:", e);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   ROSTER TABLE
+═══════════════════════════════════════════════════════════════════ */
+function roleSlug(r) { return String(r || "unknown").toLowerCase().replace(/\s+/g, ""); }
 function availDays(row) {
-  const leave = (Number(row.ph)||0) + (Number(row.al)||0) + (Number(row.other)||0);
+  const leave = (Number(row.ph) || 0) + (Number(row.al) || 0) + (Number(row.other) || 0);
   return Math.max(0, Math.round((SPRINT_LEN - leave) * 10) / 10);
 }
 
 function renderRoster() {
   const isAdmin = CURRENT_USER?.role === "admin";
-  const { rosterEditable } = getSubmissionFieldState(getSelectedSprintInfo());
-  const isLocked = !rosterEditable;
-  const body    = document.getElementById("rosterBody");
+  const { rosterEditable, userCanEdit } = getSubmissionFieldState(getSelectedSprintInfo());
+  const isLocked = !rosterEditable || !userCanEdit;
+  const body = document.getElementById("rosterBody");
   const roleOptions = getRoleOptions();
   body.innerHTML = "";
 
   rosterRows.forEach((row, idx) => {
     const avail = availDays(row);
-    row._avail  = avail;
-    const tr    = document.createElement("tr");
+    row._avail = avail;
+    const tr = document.createElement("tr");
     tr.className = "role-" + roleSlug(row.role);
 
     const optionValues = roleOptions.includes(row.role)
@@ -878,32 +1131,32 @@ function renderRoster() {
 
     tr.innerHTML = `
       <td><input type="text" data-f="name" data-i="${idx}" value="${esc(row.name)}" class="row-name-input" ${isLocked ? "disabled" : ""}></td>
-      <td><select data-f="role" data-i="${idx}" ${isLocked ? "disabled" : ""}>${optionValues.map(r=>`<option value="${r}" ${r===row.role?"selected":""}>${r}</option>`).join("")}</select></td>
+      <td><select data-f="role" data-i="${idx}" ${isLocked ? "disabled" : ""}>${optionValues.map(r => `<option value="${r}" ${r === row.role ? "selected" : ""}>${r}</option>`).join("")}</select></td>
       <td><input type="number" data-f="ph"    data-i="${idx}" value="${row.ph}"    min="0" step="0.5" ${isLocked ? "disabled" : ""}></td>
       <td><input type="number" data-f="al"    data-i="${idx}" value="${row.al}"    min="0" step="0.5" ${isLocked ? "disabled" : ""}></td>
       <td><input type="number" data-f="other" data-i="${idx}" value="${row.other}" min="0" step="0.5" ${isLocked ? "disabled" : ""}></td>
-      <td class="pct"><input type="number" data-f="pct" data-i="${idx}" value="${Number(row.pct) || 0}" min="0" max="100" step="5" ${(!isAdmin || isLocked)?"disabled":""}></td>
+      <td class="pct"><input type="number" data-f="pct" data-i="${idx}" value="${Number(row.pct) || 0}" min="0" max="100" step="5" ${(!isAdmin || isLocked) ? "disabled" : ""}></td>
       <td class="avail">${avail}</td>
-      <td><input type="text" data-f="notes" data-i="${idx}" value="${esc(row.notes)}" placeholder="—" ${(!isAdmin || isLocked)?"disabled":""}></td>
-      <td>${isAdmin && !isLocked?`<button class="ic-btn" data-rm="${idx}" title="Remove">✕</button>`:""}</td>`;
+      <td><input type="text" data-f="notes" data-i="${idx}" value="${esc(row.notes)}" placeholder="—" ${(!isAdmin || isLocked) ? "disabled" : ""}></td>
+      <td>${isAdmin && !isLocked ? `<button class="ic-btn" data-rm="${idx}" title="Remove">✕</button>` : ""}</td>`;
     body.appendChild(tr);
   });
 
-  body.querySelectorAll("input,select").forEach(el => { el.addEventListener("input",  onField); el.addEventListener("change", onField); });
+  body.querySelectorAll("input,select").forEach(el => { el.addEventListener("input", onField); el.addEventListener("change", onField); });
   body.querySelectorAll("[data-rm]").forEach(btn => {
     btn.addEventListener("click", () => { rosterRows.splice(+btn.dataset.rm, 1); renderRoster(); });
   });
   computeKPIs();
 }
 
-function esc(s) { return String(s||"").replace(/&/g,"&amp;").replace(/"/g,"&quot;"); }
+function esc(s) { return String(s || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;"); }
 
 function onField(e) {
   const idx = +e.target.dataset.i, f = e.target.dataset.f;
   let v = e.target.value;
-  if (["ph","al","other","pct"].includes(f)) v = Number(v);
+  if (["ph", "al", "other", "pct"].includes(f)) v = Number(v);
   rosterRows[idx][f] = v;
-  if (["ph","al","other","pct"].includes(f)) {
+  if (["ph", "al", "other", "pct"].includes(f)) {
     const av = availDays(rosterRows[idx]);
     rosterRows[idx]._avail = av;
     e.target.closest("tr").querySelector(".avail").textContent = av;
@@ -913,50 +1166,67 @@ function onField(e) {
 }
 
 document.getElementById("addRowBtn").addEventListener("click", () => {
-  const { rosterEditable } = getSubmissionFieldState(getSelectedSprintInfo());
-  if (!rosterEditable) return;
-  rosterRows.push({ name:"", role:getDefaultRoleName(), ph:0, al:0, other:0, pct:0, notes:"" });
+  const { rosterEditable, userCanEdit } = getSubmissionFieldState(getSelectedSprintInfo());
+  if (!rosterEditable || !userCanEdit) return;
+  rosterRows.push({ name: "", role: getDefaultRoleName(), ph: 0, al: 0, other: 0, pct: 0, notes: "" });
   renderRoster();
 });
 
 /* ═══════════════════════════════════════════════════════════════════
    KPI CALCULATIONS
 ═══════════════════════════════════════════════════════════════════ */
+function safeSetText(elementId, text) {
+  const el = document.getElementById(elementId);
+  if (el) el.textContent = text;
+}
+
+function safeSetStyle(elementId, styleProp, value) {
+  const el = document.getElementById(elementId);
+  if (el) el.style[styleProp] = value;
+}
+
 function computeKPIs() {
   const capacityRows = rosterRows.filter(r => String(r?.name || "").trim() && isCapacityRole(r?.role || ""));
-  const teamSize   = capacityRows.length;
-  const totalDays  = capacityRows.reduce((s,r) => s + availDays(r), 0);
+  const teamSize = capacityRows.length;
+  const totalDays = capacityRows.reduce((s, r) => s + availDays(r), 0);
+  const productHealth = clampPercentage(productHealthValue);
+  const productHealthFactor = 1 - (productHealth / 100);
   const overhead = capacityRows.reduce((sum, r) => {
     const available = availDays(r);
     const pct = Math.max(0, Math.min(100, Number(r?.pct) || 0));
     return sum + (available * pct / 100);
   }, 0);
   const overheadPct = totalDays > 0 ? (overhead / totalDays) * 100 : 0;
-  const sprintCap  = totalDays - overhead;
+  const baseSprintCapacity = Math.max(0, totalDays - overhead);
+  const productHealthReduction = baseSprintCapacity * (productHealth / 100);
+  const sprintCap = Math.max(0, baseSprintCapacity * productHealthFactor);
   let devDays = 0, tstDays = 0;
   capacityRows.forEach(r => {
     const available = availDays(r);
     const pct = Math.max(0, Math.min(100, Number(r?.pct) || 0));
-    const net = Math.max(0, available - (available * pct / 100));
+    const net = Math.max(0, (available - (available * pct / 100)) * productHealthFactor);
     const rl = String(r?.role || "").toLowerCase();
-    if (rl.includes("dev"))  devDays += net;
+    if (rl.includes("dev")) devDays += net;
     else if (rl.includes("test")) tstDays += net;
   });
   const tot = devDays + tstDays;
-  const dp  = tot > 0 ? Math.round(devDays/tot*100) : 0;
-  const tp  = tot > 0 ? 100 - dp : 0;
+  const dp = tot > 0 ? Math.round(devDays / tot * 100) : 0;
+  const tp = tot > 0 ? 100 - dp : 0;
 
-  document.getElementById("kpiTeamSize").textContent  = teamSize;
-  document.getElementById("kpiTotalDays").textContent = r1(totalDays);
-  document.getElementById("kpiOverhead").textContent  = r1(overhead);
-  document.getElementById("kpiOverheadFoot").textContent = `${r1(overheadPct)}% of Total Days (BAU/Meetings/Training)`;
-  document.getElementById("kpiSprintCap").textContent = r1(sprintCap);
-  document.getElementById("kpiBifText").textContent   = `Dev ${r1(devDays)}d · Test ${r1(tstDays)}d`;
-  document.getElementById("bifDevBar").style.width    = dp + "%";
-  document.getElementById("bifTestBar").style.width   = tp + "%";
-  document.getElementById("bifDevPct").textContent    = dp + "%";
-  document.getElementById("bifTestPct").textContent   = tp + "%";
-  return { teamSize, totalDays, overhead, sprintCap, devDays, tstDays, dp, tp };
+  safeSetText("kpiTeamSize", teamSize);
+  safeSetText("kpiTotalDays", r1(totalDays));
+  safeSetText("kpiOverhead", r1(overhead));
+  safeSetText("kpiOverheadFoot", `${r1(overheadPct)}% of Total Days (BAU/Meetings/Training)`);
+  safeSetText("kpiProductHealthReduction", r1(productHealthReduction));
+  safeSetText("kpiProductHealthFoot", `${r1(productHealth)}% product health reduction applied`);
+  safeSetText("kpiSprintCap", r1(sprintCap));
+  safeSetText("kpiSprintCapFoot", "Total Days − Overhead − Product Health reduction");
+  safeSetText("kpiBifText", `Dev ${r1(devDays)}d · Test ${r1(tstDays)}d`);
+  safeSetStyle("bifDevBar", "width", dp + "%");
+  safeSetStyle("bifTestBar", "width", tp + "%");
+  safeSetText("bifDevPct", dp + "%");
+  safeSetText("bifTestPct", tp + "%");
+  return { teamSize, totalDays, overhead, productHealth, productHealthReduction, sprintCap, devDays, tstDays, dp, tp };
 }
 function r1(n) { return Math.round(n * 10) / 10; }
 
@@ -1022,6 +1292,7 @@ async function loadAllTeams() {
     <div class="submission-card">
       <h3>${s.Team || "—"}</h3>
       <div class="submission-row"><span class="submission-label">Sprint:</span><span class="submission-value">${s.SprintNo || "—"}</span></div>
+      <div class="submission-row"><span class="submission-label">Product Health:</span><span class="submission-value">${r1(s.ProductHealth || 0)}%</span></div>
       <div class="submission-row"><span class="submission-label">Team Size:</span><span class="submission-value">${r1(s.TeamSize || 0)}</span></div>
       <div class="submission-row"><span class="submission-label">Overhead:</span><span class="submission-value">${r1(s.SprintOverhead || 0)}d</span></div>
       <div class="submission-row"><span class="submission-label">Capacity:</span><span class="submission-value">${r1(s.SprintCapacity || 0)}d</span></div>
@@ -1055,15 +1326,17 @@ async function exportAllTeams() {
   // Summary sheet - all teams
   const summarySheet = submissions.map(s => ({
     'Team': s.Team, 'Sprint': s.SprintNo, 'PI': s.PI,
-     'Sprint Goal': s.SprintGoal ?? '', 'Goals Achieved': s.GoalsAchieved ?? '',
-     'Objectives': Array.isArray(s.Objectives) ? s.Objectives.join(' | ') : '',
+    'Product Health %': r1(s.ProductHealth || 0),
+    'Product Health Reduction': r1(s.ProductHealthReduction || 0),
+    'Sprint Goal': s.SprintGoal ?? '', 'Goals Achieved': s.GoalsAchieved ?? '',
+    'Objectives': Array.isArray(s.Objectives) ? s.Objectives.join(' | ') : '',
     'Team Size': s.TeamSize, 'Total Days': r1(s.TotalDays),
     'Sprint Overhead': r1(s.SprintOverhead), 'Sprint Capacity': r1(s.SprintCapacity),
     'Dev Days': r1(s.DevCapacityDays), 'Test Days': r1(s.TestCapacityDays),
     'Dev %': s.DevPercent + '%', 'Test %': s.TestPercent + '%',
     'Submitted By': s.submittedBy, 'Submitted Date': s.submittedDate
   }));
-  
+
   // Detailed roster sheet
   const rosterSheet = [];
   submissions.forEach(s => {
@@ -1079,11 +1352,11 @@ async function exportAllTeams() {
       });
     }
   });
-  
+
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summarySheet), "All Teams Summary");
   if (rosterSheet.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rosterSheet), "All Roster Details");
-  
+
   XLSX.writeFile(wb, `SprintCapacity_AllTeams_${TODAY}.xlsx`);
 }
 
@@ -1091,38 +1364,47 @@ async function exportAllTeams() {
    SUBMIT
 ═══════════════════════════════════════════════════════════════════ */
 document.getElementById("submitBtn").addEventListener("click", async () => {
-  const teamKey   = document.getElementById("teamSel").value;
+  if (!canEditSubmission()) {
+    const statusEl = document.getElementById("statusMsg");
+    statusEl.textContent = "Viewer role is read-only. Submission is allowed only for Editor/Admin.";
+    statusEl.className = "status-msg err";
+    return;
+  }
+
+  const teamKey = document.getElementById("teamSel").value;
   const sprintVal = document.getElementById("sprintSel").value;
-  const statusEl  = document.getElementById("statusMsg");
+  const statusEl = document.getElementById("statusMsg");
   if (!teamKey || !sprintVal) { alert("Please select both Team and Sprint before submitting."); return; }
 
-  const teamObj   = TEAMS.find(t=>t.key===teamKey);
+  const teamObj = TEAMS.find(t => t.key === teamKey);
   if (!teamObj) {
     alert("Selected team is not active anymore. Please re-select team.");
     return;
   }
-  const sprintInf = SPRINT_CALENDAR.find(s=>s.sprint===sprintVal);
-  const kpis      = computeKPIs();
+  const sprintInf = SPRINT_CALENDAR.find(s => s.sprint === sprintVal);
+  const kpis = computeKPIs();
 
   const payload = {
     Team: teamObj.name, ProjectKey: teamObj.key, SprintNo: sprintVal,
     PI: sprintInf?.pi || "", SprintStart: sprintInf?.start || "", SprintEnd: sprintInf?.end || "",
     submittedDate: TODAY,
-    submittedBy:   `${CURRENT_USER.name} (${CURRENT_USER.email})`,
+    submittedBy: `${CURRENT_USER.name} (${CURRENT_USER.email})`,
     submittedRole: CURRENT_USER.role,
-    SprintGoal:       document.getElementById("sprintGoalInput").value,
-    GoalsAchieved:    document.getElementById("goalsAchievedInput").value,
-    Objectives:       normalizeObjectives(objectiveValues),
-    TeamSize:         kpis.teamSize,
-    TotalDays:        r1(kpis.totalDays),
-    SprintOverhead:   r1(kpis.overhead),
-    SprintCapacity:   r1(kpis.sprintCap),
-    DevCapacityDays:  r1(kpis.devDays),
+    ProductHealth: kpis.productHealth,
+    ProductHealthReduction: r1(kpis.productHealthReduction),
+    SprintGoal: document.getElementById("sprintGoalInput").value,
+    GoalsAchieved: document.getElementById("goalsAchievedInput").value,
+    Objectives: normalizeObjectives(objectiveValues),
+    TeamSize: kpis.teamSize,
+    TotalDays: r1(kpis.totalDays),
+    SprintOverhead: r1(kpis.overhead),
+    SprintCapacity: r1(kpis.sprintCap),
+    DevCapacityDays: r1(kpis.devDays),
     TestCapacityDays: r1(kpis.tstDays),
-    DevPercent:       kpis.dp,
-    TestPercent:      kpis.tp,
-    Notes:            document.getElementById("submissionNotes").value,
-    Roster:           rosterRows.map(r => ({ ...r, AvailableDays: availDays(r) }))
+    DevPercent: kpis.dp,
+    TestPercent: kpis.tp,
+    Notes: document.getElementById("submissionNotes").value,
+    Roster: rosterRows.map(r => ({ ...r, AvailableDays: availDays(r) }))
   };
 
   document.getElementById("submitBtn").disabled = true;
@@ -1131,7 +1413,7 @@ document.getElementById("submitBtn").addEventListener("click", async () => {
 
   if (result.success === false) {
     statusEl.textContent = `❌ Save failed: ${result.error || "unknown error"}. Please try again.`;
-    statusEl.className   = "status-msg err";
+    statusEl.className = "status-msg err";
   } else {
     statusEl.textContent = result.isReplace
       ? `⟳ Record replaced — ${teamObj.name}, Sprint ${sprintVal}. Capacity: ${payload.SprintCapacity} days.`
@@ -1143,6 +1425,23 @@ document.getElementById("submitBtn").addEventListener("click", async () => {
 });
 
 renderRoster();
+document.getElementById("productHealthInput").addEventListener("input", (event) => {
+  productHealthValue = clampPercentage(event.target.value);
+  computeKPIs();
+});
+document.getElementById("productHealthInput").addEventListener("blur", (event) => {
+  setProductHealth(event.target.value);
+  computeKPIs();
+});
+document.getElementById("importPrevSprintBtn").addEventListener("click", () => {
+  if (!previousSprintImport?.record || !canEditSubmission()) return;
+  if (!window.confirm(`Replace the current roster with the roster from Sprint ${previousSprintImport.sprint}?`)) return;
+  rosterRows = Array.isArray(previousSprintImport.record.Roster)
+    ? JSON.parse(JSON.stringify(previousSprintImport.record.Roster))
+    : [];
+  renderRoster();
+  showStatus(`Imported roster from Sprint ${previousSprintImport.sprint}.`, "ok");
+});
 document.getElementById("addObjectiveBtn").addEventListener("click", () => {
   const { objectivesEditable } = getSubmissionFieldState(getSelectedSprintInfo());
   if (!objectivesEditable) return;

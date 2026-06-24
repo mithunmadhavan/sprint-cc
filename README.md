@@ -25,6 +25,17 @@ npm start
 
 Backend runs on `http://localhost:3000` by default.
 
+### Authentication env vars
+
+- `JWT_SECRET` (required in production)
+- `JWT_EXPIRES_IN` (optional, default `12h`)
+- `AUTH_STRICT_MODE` (optional, default `true`; when true all protected `/api/*` routes require a bearer token)
+
+Default bootstrap admin (created automatically on first sign-in attempt):
+
+- Email: `mithunpramilak@etihad.ae`
+- Password: `Admin@1234`
+
 ### Frontend
 
 Open `index.html` in your browser. It calls the backend API at `http://localhost:3000`.
@@ -38,6 +49,8 @@ When deployed, `index.html` calls same-origin APIs (`/api/*`) automatically.
   - `/api/*` serves backend APIs
 
 - `GET /api/health`
+- `POST /api/auth/signin`
+- `GET /api/auth/me` (requires `Authorization: Bearer <token>`)
 - `GET /api/submissions`
 - `GET /api/submissions/:teamKey/:sprintNo`
 - `POST /api/submissions/upsert`
@@ -66,6 +79,18 @@ Role rules:
 - Planning roles are loaded dynamically from `/api/roles` instead of hardcoded frontend constants.
 - Admin dashboard is available at `/admin/sprint-roles`.
 - Non-team roles can set `isCapacity=false`; those roster members are excluded from Automated Capacity KPIs (`Team Size`, `Total Days`, `Sprint Capacity`, and dev/test split).
+
+User RBAC rules:
+- Allowed sign-in domain is `@etihad.ae` only.
+- If a user signs in with a valid etihad email and does not exist, a new `Viewer` user is auto-created.
+- User model fields: `username`, `name`, `firstName`, `lastName`, `email`, `password` (bcrypt hash), `isActive`, `role`, `assignedTeams`, `okta_id`.
+- `username` and `name` are set to the email local-part (text before `@`) on creation (example: `mithun@etihad.ae` -> `mithun`).
+- `firstName` and `lastName` are intentionally left blank for now.
+- Roles:
+  - `Admin`: full access to management features.
+  - `Editor`: can submit updates only for assigned teams (`assignedTeams`) when JWT auth is used.
+  - `Viewer`: read-only behavior when JWT auth is used.
+- Role integrity is enforced server-side and inside signed JWT claims; client-side role tampering is rejected.
 
 ## 3) Backend layering and logs
 

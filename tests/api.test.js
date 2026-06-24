@@ -8,9 +8,31 @@ let mongo;
 let app;
 
 async function closeConnections() {
-  await mongoose.connection.dropDatabase();
-  await mongoose.connection.close();
-  await mongo.stop();
+  if (mongoose.connection.readyState === 1) {
+    await mongoose.connection.dropDatabase();
+  }
+  await mongoose.disconnect();
+  if (mongo) {
+    await mongo.stop();
+    mongo = null;
+  }
+
+  delete process.env.MONGO_URI;
+  delete process.env.AUTH_STRICT_MODE;
+  delete process.env.JWT_SECRET;
+  delete process.env.VERCEL;
+
+  delete require.cache[require.resolve("../server")];
+  delete require.cache[require.resolve("../src/app")];
+  delete require.cache[require.resolve("../src/db/connectDb")];
+  delete require.cache[require.resolve("../src/middleware/auth")];
+  delete require.cache[require.resolve("../src/routes/apiRoutes")];
+  delete require.cache[require.resolve("../src/models/User")];
+  delete require.cache[require.resolve("../src/models/Sprint")];
+  delete require.cache[require.resolve("../src/models/Submission")];
+  delete require.cache[require.resolve("../src/services/authService")];
+  delete require.cache[require.resolve("../src/services/sprintService")];
+  delete require.cache[require.resolve("../src/services/submissionService")];
 }
 
 test("backend upserts and reads submissions", async (t) => {
@@ -42,6 +64,8 @@ test("backend upserts and reads submissions", async (t) => {
     TeamSize: 1,
     TotalDays: 8,
     SprintOverhead: 1.6,
+    ProductHealth: 10,
+    ProductHealthReduction: 0.6,
     SprintCapacity: 6.4,
     DevCapacityDays: 6.4,
     TestCapacityDays: 0,
@@ -69,6 +93,8 @@ test("backend upserts and reads submissions", async (t) => {
   assert.equal(read.body.found, true);
   assert.equal(read.body.record.Team, "McLaren");
   assert.equal(read.body.record.SprintGoal, 6);
+  assert.equal(read.body.record.ProductHealth, 10);
+  assert.equal(read.body.record.ProductHealthReduction, 0.6);
   assert.deepEqual(read.body.record.Objectives, ["Deliver checkout enhancements", "Stabilise regression suite"]);
   assert.equal(read.body.record.GoalsAchieved, null);
   assert.equal(read.headers["x-correlation-id"], "test-corr-id");
@@ -205,6 +231,38 @@ test("backend enforces submission field edit windows", async (t) => {
   assert.equal(afterGraceObjectivesBlocked.status, 400);
   assert.match(afterGraceObjectivesBlocked.body.error, /objectives/i);
 
+  const afterGraceRosterBlocked = await request(app).post("/api/submissions/upsert").send({
+    Team: "McLaren",
+    ProjectKey: "MC9",
+    SprintNo: "90.5",
+    submittedDate: iso(0),
+    submittedBy: "Tester",
+    SprintGoal: "",
+    GoalsAchieved: "",
+    Objectives: [],
+    ProductHealth: 0,
+    Notes: "after-grace-roster",
+    Roster: [{ name: "Late Edit", role: "Full Stack Dev", ph: 0, al: 0, other: 0, pct: 100, notes: "", AvailableDays: 10 }],
+  });
+  assert.equal(afterGraceRosterBlocked.status, 400);
+  assert.match(afterGraceRosterBlocked.body.error, /team roster/i);
+
+  const afterGraceProductHealthBlocked = await request(app).post("/api/submissions/upsert").send({
+    Team: "McLaren",
+    ProjectKey: "MC10",
+    SprintNo: "90.5",
+    submittedDate: iso(0),
+    submittedBy: "Tester",
+    SprintGoal: "",
+    GoalsAchieved: "",
+    Objectives: [],
+    ProductHealth: 15,
+    Notes: "after-grace-product-health",
+    Roster: [],
+  });
+  assert.equal(afterGraceProductHealthBlocked.status, 400);
+  assert.match(afterGraceProductHealthBlocked.body.error, /product health/i);
+
   const beforeEndGoalsBlocked = await request(app).post("/api/submissions/upsert").send({
     Team: "McLaren",
     ProjectKey: "MC3",
@@ -324,6 +382,8 @@ test("backend manages sprints with CRUD, numeric PI, and next-PI generation", as
    assert.equal(update.body.sprint.pi, 37);
    assert.equal(update.body.sprint.start, "2026-10-02T00:00:00.000Z");
    assert.equal(update.body.sprint.end, "2026-10-15T00:00:00.000Z");
+   assert.equal(update.body.reflowedCount, 5);
+   assert.deepEqual(update.body.reflowedSprints, ["37.2", "37.3", "37.4", "37.5", "37.IP"]);
 
    const afterStartOnlyEdit = await request(app).get("/api/sprints?pi=37");
    assert.equal(afterStartOnlyEdit.status, 200);
@@ -337,6 +397,7 @@ test("backend manages sprints with CRUD, numeric PI, and next-PI generation", as
    assert.equal(updateWithStartAndEnd.status, 200);
    assert.equal(updateWithStartAndEnd.body.sprint.start, "2026-10-20T00:00:00.000Z");
    assert.equal(updateWithStartAndEnd.body.sprint.end, "2026-10-25T00:00:00.000Z");
+   assert.equal(updateWithStartAndEnd.body.reflowedCount, 4);
 
    const afterStartEndEdit = await request(app).get("/api/sprints?pi=37");
    assert.equal(afterStartEndEdit.status, 200);

@@ -18,6 +18,27 @@ function addDays(baseDate, days) {
   return new Date(baseDate.getTime() + days * DAY_MS);
 }
 
+function toValidDate(value, fieldName) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    const err = new Error(`${fieldName} must be a valid date`);
+    err.statusCode = 400;
+    throw err;
+  }
+  return date;
+}
+
+function assertValidDateRange(start, end) {
+  const startDate = toValidDate(start, "start");
+  const endDate = toValidDate(end, "end");
+  if (endDate < startDate) {
+    const err = new Error("Sprint end date must be on or after the start date");
+    err.statusCode = 400;
+    throw err;
+  }
+  return { startDate, endDate };
+}
+
 function normalizeSprintName(value) {
   return String(value || "").trim();
 }
@@ -106,19 +127,23 @@ function assertPiEligibleForNewSprint(currentSprint, pi) {
 
 async function listAddSprintOptions() {
   const allSprints = await Sprint.find().lean();
+  const today = new Date();
   const piNumbers = [...new Set(allSprints.map((s) => s.pi))].sort((a, b) => a - b);
   const options = [];
 
   for (const pi of piNumbers) {
     const piSprints = allSprints.filter((s) => s.pi === pi);
-    const current = pickLastSprintInPi(piSprints);
-    if (!current) continue;
 
-    // Keep options aligned with createNewSprintInExistingPi validation.
+    // Block only if the IP sprint has already started (PI is actively in innovation phase).
+    const ipSprint = piSprints.find((s) => isIpSprintName(s.sprint));
+    if (ipSprint && new Date(ipSprint.start) <= today) continue;
+
+    // Use the last non-IP sprint as the base for the next sprint calculation.
+    const nonIpSprints = piSprints.filter((s) => !isIpSprintName(s.sprint));
+    const current = pickLastSprintInPi(nonIpSprints.length ? nonIpSprints : piSprints);
+    if (!current) continue;
     if (isIpSprintName(current.sprint)) continue;
 
-    // If a PI already contains any IP sprint, it's considered closed for new sprint creation.
-    if (piSprints.some((item) => isIpSprintName(item.sprint))) continue;
 
     const nextSprintName = await resolveNextAvailableSprintName(current.sprint, pi);
     const nextStart = addDays(new Date(current.end), 1);
@@ -286,11 +311,12 @@ async function getSprint(id) {
 }
 
 async function createSprint(data) {
+  const { startDate, endDate } = assertValidDateRange(data.start, data.end);
   const sprint = new Sprint({
     sprint: normalizeSprintName(data.sprint),
     pi: toPiNumber(data.pi),
-    start: new Date(data.start),
-    end: new Date(data.end),
+    start: startDate,
+    end: endDate,
   });
   return sprint.save();
 }
@@ -325,14 +351,17 @@ async function updateSprint(id, data) {
     sprint.end = addDays(new Date(sprint.start), originalDuration - 1);
   }
 
+  assertValidDateRange(sprint.start, sprint.end);
+
   sprint.updatedAt = new Date();
   await sprint.save();
 
+  let reflowed = [];
   if (hasStart || hasEnd) {
-    await reflowTrailingSprints(sprint);
+    reflowed = await reflowTrailingSprints(sprint);
   }
 
-  return sprint;
+  return { sprint, reflowedCount: reflowed.length, reflowedSprints: reflowed.map((item) => item.sprint) };
 }
 
 async function deleteSprint(id) {
@@ -380,16 +409,22 @@ async function deleteSprint(id) {
 
 async function createNewSprintInExistingPi(piNumber) {
   const pi = toPiNumber(piNumber);
+  const today = new Date();
 
   const allPiSprints = await Sprint.find({ pi }).lean();
-  const currentSprint = pickLastSprintInPi(allPiSprints);
-  assertPiEligibleForNewSprint(currentSprint, pi);
 
-  if (allPiSprints.some((item) => isIpSprintName(item.sprint))) {
+  // Block only if the IP sprint has already started (PI is actively in innovation phase).
+  const ipSprint = allPiSprints.find((s) => isIpSprintName(s.sprint));
+  if (ipSprint && new Date(ipSprint.start) <= today) {
     const err = new Error("PI is already in IP no new sprint can be added");
     err.statusCode = 400;
     throw err;
   }
+
+  // Use the last non-IP sprint as the base for the new sprint.
+  const nonIpSprints = allPiSprints.filter((s) => !isIpSprintName(s.sprint));
+  const currentSprint = pickLastSprintInPi(nonIpSprints.length ? nonIpSprints : allPiSprints);
+  assertPiEligibleForNewSprint(currentSprint, pi);
 
   const nextName = await resolveNextAvailableSprintName(currentSprint.sprint, pi);
   const start = addDays(new Date(currentSprint.end), 1);
