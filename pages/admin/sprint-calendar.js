@@ -482,3 +482,4 @@ if (document.readyState === "loading") {
 } else {
   // DOM is already loaded
   initializePageEvents();
+  }
