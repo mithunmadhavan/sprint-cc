@@ -16,6 +16,7 @@ router.post("/submissions/upsert", submissionController.upsertSubmission);
 router.get("/sprints", sprintController.listSprints);
 router.get("/sprints/next-pi-preview", sprintController.previewNextPi);
 router.post("/sprints/create-next-pi", sprintController.createNextPi);
+router.post("/sprints/create-new-sprint", sprintController.createNewSprintInExistingPi);
 router.delete("/sprints/pi/:piNumber", sprintController.deletePi);
 router.post("/sprints", sprintController.createSprint);
 router.get("/sprints/:id", sprintController.getSprint);

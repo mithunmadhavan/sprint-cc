@@ -170,6 +170,32 @@ async function createNextPi(req, res) {
   }
 }
 
+async function createNewSprintInExistingPi(req, res) {
+  try {
+    await connectDb(req.correlationId);
+    const result = await sprintService.createNewSprintInExistingPi();
+    return res.status(201).json({
+      ok: true,
+      currentSprint: result.currentSprint,
+      sprint: result.sprint,
+      reflowedCount: result.reflowedCount,
+      message: `Created sprint ${result.sprint.sprint} after ${result.currentSprint} and reflowed ${result.reflowedCount} following sprint(s)`,
+    });
+  } catch (e) {
+    if (e.statusCode === 400) {
+      return res.status(400).json({ error: e.message });
+    }
+    logger.error("db-failure", {
+      correlationId: req.correlationId,
+      method: req.method,
+      path: req.path,
+      action: "create-new-sprint",
+      error: e,
+    });
+    return res.status(500).json({ error: "Failed to create new sprint" });
+  }
+}
+
 async function previewNextPi(req, res) {
   try {
     await connectDb(req.correlationId);
@@ -229,6 +255,7 @@ module.exports = {
   deleteSprint,
   previewNextPi,
   createNextPi,
+  createNewSprintInExistingPi,
   deletePi,
 };
 

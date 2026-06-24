@@ -50,6 +50,7 @@
     <div class="action-row">
       <button class="btn btn-primary" id="filterBtn">🔍 Filter</button>
       <button class="btn btn-secondary" id="clearFilterBtn">Clear</button>
+      <button class="btn btn-primary" id="addNewSprintBtn">Add Sprint</button>
       <button class="btn btn-primary" id="addSprintBtn">Create new PI</button>
     </div>
   </div>
@@ -368,6 +369,32 @@ async function deletePi(piNumber) {
 document.getElementById("addSprintBtn").addEventListener("click", () => {
   openNextPiPreview();
 });
+
+document.getElementById("addNewSprintBtn").addEventListener("click", () => {
+  createNewSprintInExistingPi();
+});
+
+async function createNewSprintInExistingPi() {
+  if (!confirm("Add a new sprint after the current running sprint in its PI? Following sprint dates will be reflowed.")) {
+    return;
+  }
+
+  try {
+    const resp = await fetch(`${API_BASE}/api/sprints/create-new-sprint`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    const json = await resp.json();
+    if (!resp.ok) {
+      throw new Error(json.error || "Failed to add sprint");
+    }
+
+    showStatus(`✓ ${json.message}`, "ok");
+    loadSprints();
+  } catch (e) {
+    showStatus(`✕ ${e.message}`, "err");
+  }
+}
 
 async function openNextPiPreview() {
   const previewModal = document.getElementById("piPreviewModal");

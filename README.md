@@ -48,6 +48,7 @@ When deployed, `index.html` calls same-origin APIs (`/api/*`) automatically.
 - `DELETE /api/sprints/:id`
 - `GET /api/sprints/next-pi-preview` (visualization only, no DB write)
 - `POST /api/sprints/create-next-pi` (creates next PI with `*.1..*.5` and `*.IP`)
+- `POST /api/sprints/create-new-sprint` (adds next sprint after the current running sprint in its PI and reflows following dates)
 - `GET /api/roles`
 - `GET /api/roles/:id`
 - `POST /api/roles`

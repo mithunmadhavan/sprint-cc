@@ -368,6 +368,111 @@ test("backend manages sprints with CRUD, numeric PI, and next-PI generation", as
    assert.match(blocked.body.error, /two PIs that have not started/i);
 });
 
+test("backend adds sprint after current running sprint and reflows following dates", async (t) => {
+   mongo = await MongoMemoryServer.create();
+   process.env.MONGO_URI = mongo.getUri();
+   process.env.VERCEL = "1";
+
+   app = require("../server");
+
+   t.after(async () => {
+      await closeConnections();
+   });
+
+   function isoDaysFromNow(offset) {
+      const d = new Date();
+      d.setUTCDate(d.getUTCDate() + offset);
+      return d.toISOString().slice(0, 10);
+   }
+
+   const seed = [
+      { sprint: "40.1", pi: 40, start: isoDaysFromNow(-30), end: isoDaysFromNow(-17) },
+      { sprint: "40.2", pi: 40, start: isoDaysFromNow(-2), end: isoDaysFromNow(11) },
+      { sprint: "40.4", pi: 40, start: isoDaysFromNow(12), end: isoDaysFromNow(25) },
+      { sprint: "40.IP", pi: 40, start: isoDaysFromNow(26), end: isoDaysFromNow(39) },
+   ];
+
+   for (const item of seed) {
+      const created = await request(app).post("/api/sprints").send(item);
+      assert.equal(created.status, 201);
+   }
+
+   const create = await request(app).post("/api/sprints/create-new-sprint");
+   assert.equal(create.status, 201);
+   assert.equal(create.body.sprint.sprint, "40.3");
+   assert.equal(create.body.currentSprint, "40.2");
+   assert.equal(create.body.reflowedCount, 2);
+   assert.equal(create.body.sprint.start.slice(0, 10), isoDaysFromNow(12));
+   assert.equal(create.body.sprint.end.slice(0, 10), isoDaysFromNow(25));
+
+   const after = await request(app).get("/api/sprints?pi=40");
+   const sprint404 = after.body.sprints.find((s) => s.sprint === "40.4");
+   const sprint40IP = after.body.sprints.find((s) => s.sprint === "40.IP");
+   assert.equal(sprint404.start.slice(0, 10), isoDaysFromNow(26));
+   assert.equal(sprint40IP.start.slice(0, 10), isoDaysFromNow(40));
+
+   const duplicateBlocked = await request(app).post("/api/sprints/create-new-sprint");
+   assert.equal(duplicateBlocked.status, 400);
+   assert.match(duplicateBlocked.body.error, /already exists/i);
+});
+
+test("backend adds numbered IP follow-up sprint after active IP sprint", async (t) => {
+   mongo = await MongoMemoryServer.create();
+   process.env.MONGO_URI = mongo.getUri();
+   process.env.VERCEL = "1";
+
+   app = require("../server");
+
+   t.after(async () => {
+      await closeConnections();
+   });
+
+   function isoDaysFromNow(offset) {
+      const d = new Date();
+      d.setUTCDate(d.getUTCDate() + offset);
+      return d.toISOString().slice(0, 10);
+   }
+
+   const created = await request(app).post("/api/sprints").send({
+      sprint: "41.IP",
+      pi: 41,
+      start: isoDaysFromNow(-1),
+      end: isoDaysFromNow(12),
+   });
+   assert.equal(created.status, 201);
+
+   const create = await request(app).post("/api/sprints/create-new-sprint");
+   assert.equal(create.status, 201);
+   assert.equal(create.body.sprint.sprint, "41.IP (2)");
+   assert.equal(create.body.currentSprint, "41.IP");
+   assert.equal(create.body.sprint.start.slice(0, 10), isoDaysFromNow(13));
+   assert.equal(create.body.sprint.end.slice(0, 10), isoDaysFromNow(26));
+});
+
+test("backend rejects add sprint when no active sprint exists", async (t) => {
+   mongo = await MongoMemoryServer.create();
+   process.env.MONGO_URI = mongo.getUri();
+   process.env.VERCEL = "1";
+
+   app = require("../server");
+
+   t.after(async () => {
+      await closeConnections();
+   });
+
+   const created = await request(app).post("/api/sprints").send({
+      sprint: "42.1",
+      pi: 42,
+      start: "2099-01-01",
+      end: "2099-01-14",
+   });
+   assert.equal(created.status, 201);
+
+   const blocked = await request(app).post("/api/sprints/create-new-sprint");
+   assert.equal(blocked.status, 400);
+   assert.match(blocked.body.error, /no active sprint/i);
+});
+
 test("backend manages sprint roles with default seeding and capacity flags", async (t) => {
    mongo = await MongoMemoryServer.create();
    process.env.MONGO_URI = mongo.getUri();

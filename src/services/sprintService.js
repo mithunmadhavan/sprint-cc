@@ -1,6 +1,7 @@
 const Sprint = require("../models/Sprint");
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_SPRINT_DURATION_DAYS = 14;
 
 function toPiNumber(value) {
   const n = Number(value);
@@ -27,11 +28,33 @@ function sprintDurationDays(start, end) {
 
 function sprintOrderInPi(sprintName) {
   const name = normalizeSprintName(sprintName);
-  const suffix = name.split(".").pop();
-  if (!suffix) return Number.MAX_SAFE_INTEGER;
-  if (/^ip$/i.test(suffix)) return 6;
-  const numeric = Number(suffix);
-  return Number.isInteger(numeric) ? numeric : Number.MAX_SAFE_INTEGER;
+  const ipMatch = name.match(/^(\d+)\.IP(?:\s*\((\d+)\))?$/i);
+  if (ipMatch) {
+    const variant = ipMatch[2] ? Number(ipMatch[2]) : 1;
+    return 5 + variant;
+  }
+  const numericMatch = name.match(/^(\d+)\.(\d+)$/);
+  if (numericMatch) {
+    return Number(numericMatch[2]);
+  }
+  return Number.MAX_SAFE_INTEGER;
+}
+
+function computeNextSprintName(currentSprintName) {
+  const name = normalizeSprintName(currentSprintName);
+  const ipMatch = name.match(/^(\d+)\.IP(?:\s*\((\d+)\))?$/i);
+  if (ipMatch) {
+    const pi = ipMatch[1];
+    const variant = ipMatch[2] ? Number(ipMatch[2]) + 1 : 2;
+    return `${pi}.IP (${variant})`;
+  }
+  const numericMatch = name.match(/^(\d+)\.(\d+)$/);
+  if (numericMatch) {
+    return `${numericMatch[1]}.${Number(numericMatch[2]) + 1}`;
+  }
+  const err = new Error(`Cannot derive next sprint name from "${name}"`);
+  err.statusCode = 400;
+  throw err;
 }
 
 function toUtcDateKey(value) {
@@ -42,26 +65,78 @@ function isTodayOrPast(value) {
   return toUtcDateKey(value) <= toUtcDateKey(new Date());
 }
 
+function isActiveSprint(start, end, todayKey = toUtcDateKey(new Date())) {
+  return toUtcDateKey(start) <= todayKey && todayKey <= toUtcDateKey(end);
+}
+
 async function getPiStartSprint(pi) {
   const first = await Sprint.findOne({ pi, sprint: `${pi}.1` }).lean();
   if (first) return first;
   return Sprint.findOne({ pi }).sort({ start: 1 }).lean();
 }
 
+async function getCurrentRunningSprint() {
+  const todayKey = toUtcDateKey(new Date());
+  const sprints = await Sprint.find().lean();
+  const active = sprints.filter((s) => isActiveSprint(s.start, s.end, todayKey));
+  if (active.length === 0) {
+    const err = new Error("No active sprint found in calendar");
+    err.statusCode = 400;
+    throw err;
+  }
+  active.sort((a, b) => new Date(b.start) - new Date(a.start));
+  return active[0];
+}
+
+function sortSprintsForReflow(a, b) {
+  if (a.pi !== b.pi) return a.pi - b.pi;
+  const orderA = sprintOrderInPi(a.sprint);
+  const orderB = sprintOrderInPi(b.sprint);
+  if (orderA !== orderB) return orderA - orderB;
+  return new Date(a.start) - new Date(b.start);
+}
+
+async function reflowTrailingSprints(fromSprint, { excludeId = null } = {}) {
+  const currentPi = fromSprint.pi;
+  const currentOrder = sprintOrderInPi(fromSprint.sprint);
+  const candidates = await Sprint.find({
+    $or: [{ pi: { $gt: currentPi } }, { pi: currentPi }],
+  });
+
+  const trailing = candidates
+    .filter((item) => {
+      if (excludeId && String(item._id) === String(excludeId)) return false;
+      if (String(item._id) === String(fromSprint._id)) return false;
+      if (item.pi > currentPi) return true;
+      return sprintOrderInPi(item.sprint) > currentOrder;
+    })
+    .sort(sortSprintsForReflow);
+
+  let nextStart = addDays(new Date(fromSprint.end), 1);
+  for (const item of trailing) {
+    const duration = sprintDurationDays(item.start, item.end);
+    item.start = new Date(nextStart);
+    item.end = addDays(new Date(nextStart), duration - 1);
+    item.updatedAt = new Date();
+    // eslint-disable-next-line no-await-in-loop
+    await item.save();
+    nextStart = addDays(new Date(item.end), 1);
+  }
+
+  return trailing;
+}
+
 async function listSprints(filters = {}) {
   const query = {};
 
-  // Filter by sprint name
   if (filters.sprint) {
     query.sprint = { $regex: filters.sprint, $options: "i" };
   }
 
-  // Filter by PI
   if (filters.pi) {
     query.pi = toPiNumber(filters.pi);
   }
 
-  // Filter by start date range
   if (filters.startDateFrom || filters.startDateTo) {
     query.start = {};
     if (filters.startDateFrom) {
@@ -72,7 +147,6 @@ async function listSprints(filters = {}) {
     }
   }
 
-  // Filter by end date range
   if (filters.endDateFrom || filters.endDateTo) {
     query.end = {};
     if (filters.endDateFrom) {
@@ -84,16 +158,11 @@ async function listSprints(filters = {}) {
   }
 
   const sprints = await Sprint.find(query).lean();
-
-  // Re-order: older than 3 weeks at last (by end date)
   const now = new Date();
   const threeWeeksAgo = new Date(now.getTime() - 21 * 24 * 60 * 60 * 1000);
-
-  // Sprints are "old" if their end date is more than 3 weeks ago
   const recent = sprints.filter((s) => new Date(s.end) >= threeWeeksAgo);
   const old = sprints.filter((s) => new Date(s.end) < threeWeeksAgo);
 
-  // Sort each group by start date ascending
   recent.sort((a, b) => new Date(a.start) - new Date(b.start));
   old.sort((a, b) => new Date(a.start) - new Date(b.start));
 
@@ -129,10 +198,10 @@ async function updateSprint(id, data) {
 
   const hasStart = data.start !== undefined && data.start !== null && data.start !== "";
   const hasEnd = data.end !== undefined && data.end !== null && data.end !== "";
-
   const originalDuration = sprintDurationDays(sprint.start, sprint.end);
   const currentPi = sprint.pi;
   const currentOrder = sprintOrderInPi(sprint.sprint);
+
   if (data.sprint !== undefined && data.sprint !== null && data.sprint !== "") {
     sprint.sprint = normalizeSprintName(data.sprint);
   }
@@ -142,7 +211,6 @@ async function updateSprint(id, data) {
   if (hasStart) sprint.start = new Date(data.start);
   if (hasEnd) sprint.end = new Date(data.end);
 
-  // If only start is changed, keep sprint duration stable and recompute end.
   if (hasStart && !hasEnd) {
     sprint.end = addDays(new Date(sprint.start), originalDuration - 1);
   }
@@ -150,36 +218,8 @@ async function updateSprint(id, data) {
   sprint.updatedAt = new Date();
   await sprint.save();
 
-  // Reflow subsequent sprints whenever schedule dates are edited.
   if (hasStart || hasEnd) {
-    const candidates = await Sprint.find({
-      $or: [{ pi: { $gt: currentPi } }, { pi: currentPi }],
-    });
-
-    const trailing = candidates
-      .filter((item) => {
-        if (String(item._id) === String(sprint._id)) return false;
-        if (item.pi > currentPi) return true;
-        return sprintOrderInPi(item.sprint) > currentOrder;
-      })
-      .sort((a, b) => {
-        if (a.pi !== b.pi) return a.pi - b.pi;
-        const orderA = sprintOrderInPi(a.sprint);
-        const orderB = sprintOrderInPi(b.sprint);
-        if (orderA !== orderB) return orderA - orderB;
-        return new Date(a.start) - new Date(b.start);
-      });
-
-    let nextStart = addDays(new Date(sprint.end), 1);
-    for (const item of trailing) {
-      const duration = sprintDurationDays(item.start, item.end);
-      item.start = new Date(nextStart);
-      item.end = addDays(new Date(nextStart), duration - 1);
-      item.updatedAt = new Date();
-      // eslint-disable-next-line no-await-in-loop
-      await item.save();
-      nextStart = addDays(new Date(item.end), 1);
-    }
+    await reflowTrailingSprints(sprint);
   }
 
   return sprint;
@@ -203,7 +243,33 @@ async function deleteSprint(id) {
   throw err;
 }
 
-// A PI is considered "not started" when its *.1 sprint start date is in the future.
+async function createNewSprintInExistingPi() {
+  const current = await getCurrentRunningSprint();
+  const nextName = computeNextSprintName(current.sprint);
+  const existing = await Sprint.findOne({ sprint: nextName }).lean();
+  if (existing) {
+    const err = new Error(`Sprint "${nextName}" already exists`);
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const start = addDays(new Date(current.end), 1);
+  const end = addDays(new Date(start), DEFAULT_SPRINT_DURATION_DAYS - 1);
+  const newSprint = await createSprint({
+    sprint: nextName,
+    pi: current.pi,
+    start,
+    end,
+  });
+
+  const reflowed = await reflowTrailingSprints(newSprint);
+  return {
+    currentSprint: current.sprint,
+    sprint: newSprint,
+    reflowedCount: reflowed.length,
+  };
+}
+
 async function getNotStartedPiNumbers() {
   const now = new Date();
   const firstSprints = await Sprint.find({ sprint: { $regex: /^\d+\.1$/ } }).lean();
@@ -239,7 +305,6 @@ async function computeNextPiBatch() {
   }
 
   const nextPi = latestCompletedPiIp.pi + 1;
-
   const startDate = addDays(new Date(latestCompletedPiIp.end), 1);
   const sprintSuffixes = ["1", "2", "3", "4", "5", "IP"];
   const sprints = sprintSuffixes.map((suffix, index) => {
@@ -267,8 +332,6 @@ async function createNextPiBatch() {
 
 async function deletePiBatch(piNumber) {
   const pi = toPiNumber(piNumber);
-
-  // 1. PI must exist and its *.1 sprint must not have started
   const firstSprint = await getPiStartSprint(pi);
   if (!firstSprint) {
     const err = new Error(`PI ${pi}: PI not found or missing ${pi}.1 sprint`);
@@ -282,7 +345,6 @@ async function deletePiBatch(piNumber) {
     throw err;
   }
 
-  // 2. No higher PI must exist (can't delete PI 35 if PI 36 exists)
   const higherPi = await Sprint.findOne({ pi: { $gt: pi } }).lean();
   if (higherPi) {
     const err = new Error(
@@ -292,7 +354,6 @@ async function deletePiBatch(piNumber) {
     throw err;
   }
 
-  // 3. No submissions may reference any sprint in this PI
   const Submission = require("../models/Submission");
   const piSprintDocs = await Sprint.find({ pi }, { sprint: 1 }).lean();
   const sprintNames = piSprintDocs.map((s) => s.sprint);
@@ -319,6 +380,6 @@ module.exports = {
   deleteSprint,
   previewNextPiBatch,
   createNextPiBatch,
+  createNewSprintInExistingPi,
   deletePiBatch,
 };
-
