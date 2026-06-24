@@ -60,16 +60,21 @@ function getSelectedAddSprintOption() {
 
 function syncAddSprintUi() {
   const addBtn = document.getElementById("addNewSprintBtn");
+  const select = document.getElementById("addSprintPiSelect");
   const selected = getSelectedAddSprintOption();
 
   if (!addSprintOptions.length) {
+    select.style.display = "none";
     addBtn.disabled = true;
     addBtn.textContent = "Add Sprint";
     return;
   }
 
+  // Keep the PI selector hidden when there is only one eligible PI.
+  select.style.display = addSprintOptions.length > 1 ? "" : "none";
+
   addBtn.disabled = false;
-  addBtn.textContent = selected ? `Add Sprint in PI ${selected.pi}` : "Add Sprint";
+  addBtn.textContent = selected ? `Add ${selected.nextSprintName}` : "Add Sprint";
 }
 
 async function loadAddSprintOptions() {
@@ -99,7 +104,10 @@ async function loadAddSprintOptions() {
     const stillExists = addSprintOptions.some((option) => String(option.pi) === String(previousValue));
     if (stillExists) {
       select.value = previousValue;
+    } else {
+      select.value = String(addSprintOptions[0].pi);
     }
+
     syncAddSprintUi();
   } catch (_e) {
     addSprintOptions = [];

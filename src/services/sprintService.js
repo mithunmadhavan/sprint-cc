@@ -62,11 +62,6 @@ function computeNextSprintName(currentSprintName) {
   throw err;
 }
 
-async function piHasIpSprint(pi) {
-  const sprints = await Sprint.find({ pi }, { sprint: 1 }).lean();
-  return sprints.some((s) => isIpSprintName(s.sprint));
-}
-
 function pickLastSprintInPi(sprints = []) {
   if (!sprints.length) return null;
   return [...sprints].sort((a, b) => {
@@ -95,6 +90,20 @@ async function getPreviousSprintInPi(sprint) {
   );
 }
 
+function assertPiEligibleForNewSprint(currentSprint, pi) {
+  if (!currentSprint) {
+    const err = new Error(`PI ${pi} has no sprints to extend`);
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (isIpSprintName(currentSprint.sprint)) {
+    const err = new Error("PI is already in IP no new sprint can be added");
+    err.statusCode = 400;
+    throw err;
+  }
+}
+
 async function listAddSprintOptions() {
   const allSprints = await Sprint.find().lean();
   const piNumbers = [...new Set(allSprints.map((s) => s.pi))].sort((a, b) => a - b);
@@ -103,7 +112,13 @@ async function listAddSprintOptions() {
   for (const pi of piNumbers) {
     const piSprints = allSprints.filter((s) => s.pi === pi);
     const current = pickLastSprintInPi(piSprints);
-    if (!current || isIpSprintName(current.sprint)) continue;
+    if (!current) continue;
+
+    // Keep options aligned with createNewSprintInExistingPi validation.
+    if (isIpSprintName(current.sprint)) continue;
+
+    // If a PI already contains any IP sprint, it's considered closed for new sprint creation.
+    if (piSprints.some((item) => isIpSprintName(item.sprint))) continue;
 
     const nextSprintName = await resolveNextAvailableSprintName(current.sprint, pi);
     const nextStart = addDays(new Date(current.end), 1);
@@ -366,14 +381,11 @@ async function deleteSprint(id) {
 async function createNewSprintInExistingPi(piNumber) {
   const pi = toPiNumber(piNumber);
 
-  const currentSprint = await getCurrentSprintInPi(pi);
-  if (!currentSprint) {
-    const err = new Error(`PI ${pi} has no sprints to extend`);
-    err.statusCode = 400;
-    throw err;
-  }
+  const allPiSprints = await Sprint.find({ pi }).lean();
+  const currentSprint = pickLastSprintInPi(allPiSprints);
+  assertPiEligibleForNewSprint(currentSprint, pi);
 
-  if (isIpSprintName(currentSprint.sprint)) {
+  if (allPiSprints.some((item) => isIpSprintName(item.sprint))) {
     const err = new Error("PI is already in IP no new sprint can be added");
     err.statusCode = 400;
     throw err;

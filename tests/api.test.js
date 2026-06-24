@@ -543,6 +543,44 @@ test("backend adds sprint for selected PI even if all sprints are future", async
    assert.equal(createdSprint.body.sprint.sprint, "42.2");
 });
 
+test("backend add-sprint-options excludes PIs that already contain IP sprint", async (t) => {
+   mongo = await MongoMemoryServer.create();
+   process.env.MONGO_URI = mongo.getUri();
+   process.env.VERCEL = "1";
+
+   app = require("../server");
+
+   t.after(async () => {
+      await closeConnections();
+   });
+
+   function isoDaysFromNow(offset) {
+      const d = new Date();
+      d.setUTCDate(d.getUTCDate() + offset);
+      return d.toISOString().slice(0, 10);
+   }
+
+   for (const item of [
+      { sprint: "35.1", pi: 35, start: isoDaysFromNow(-20), end: isoDaysFromNow(-7) },
+      { sprint: "35.5", pi: 35, start: isoDaysFromNow(-6), end: isoDaysFromNow(7) },
+      { sprint: "35.IP", pi: 35, start: isoDaysFromNow(8), end: isoDaysFromNow(21) },
+      { sprint: "36.1", pi: 36, start: isoDaysFromNow(-5), end: isoDaysFromNow(8) },
+   ]) {
+      const created = await request(app).post("/api/sprints").send(item);
+      assert.equal(created.status, 201);
+   }
+
+   const options = await request(app).get("/api/sprints/add-sprint-options");
+   assert.equal(options.status, 200);
+   assert.equal(options.body.ok, true);
+   assert.equal(options.body.options.some((option) => Number(option.pi) === 35), false);
+   assert.equal(options.body.options.some((option) => Number(option.pi) === 36), true);
+
+   const blockedCreate = await request(app).post("/api/sprints/create-new-sprint").send({ pi: 35 });
+   assert.equal(blockedCreate.status, 400);
+   assert.match(blockedCreate.body.error, /already in IP/i);
+});
+
 test("backend manages sprint roles with default seeding and capacity flags", async (t) => {
    mongo = await MongoMemoryServer.create();
    process.env.MONGO_URI = mongo.getUri();
