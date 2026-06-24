@@ -411,9 +411,89 @@ test("backend adds sprint after current running sprint and reflows following dat
    assert.equal(sprint404.start.slice(0, 10), isoDaysFromNow(26));
    assert.equal(sprint40IP.start.slice(0, 10), isoDaysFromNow(40));
 
-   const duplicateBlocked = await request(app).post("/api/sprints/create-new-sprint");
-   assert.equal(duplicateBlocked.status, 400);
-   assert.match(duplicateBlocked.body.error, /already exists/i);
+   const secondCreate = await request(app).post("/api/sprints/create-new-sprint");
+   assert.equal(secondCreate.status, 201);
+   assert.equal(secondCreate.body.sprint.sprint, "40.5");
+   assert.equal(secondCreate.body.currentSprint, "40.2");
+});
+
+test("backend skips to next available IP variant when follow-up sprint already exists", async (t) => {
+   mongo = await MongoMemoryServer.create();
+   process.env.MONGO_URI = mongo.getUri();
+   process.env.VERCEL = "1";
+
+   app = require("../server");
+
+   t.after(async () => {
+      await closeConnections();
+   });
+
+   function isoDaysFromNow(offset) {
+      const d = new Date();
+      d.setUTCDate(d.getUTCDate() + offset);
+      return d.toISOString().slice(0, 10);
+   }
+
+   for (const item of [
+      {
+         sprint: "34.IP",
+         pi: 34,
+         start: isoDaysFromNow(-1),
+         end: isoDaysFromNow(12),
+      },
+      {
+         sprint: "34.IP (2)",
+         pi: 34,
+         start: isoDaysFromNow(13),
+         end: isoDaysFromNow(26),
+      },
+   ]) {
+      const created = await request(app).post("/api/sprints").send(item);
+      assert.equal(created.status, 201);
+   }
+
+   const create = await request(app).post("/api/sprints/create-new-sprint");
+   assert.equal(create.status, 201);
+   assert.equal(create.body.sprint.sprint, "34.IP (3)");
+   assert.equal(create.body.currentSprint, "34.IP");
+   assert.equal(create.body.sprint.start.slice(0, 10), isoDaysFromNow(13));
+   assert.equal(create.body.reflowedCount, 1);
+
+   const after = await request(app).get("/api/sprints?pi=34");
+   const sprint34Ip2 = after.body.sprints.find((s) => s.sprint === "34.IP (2)");
+   assert.equal(sprint34Ip2.start.slice(0, 10), isoDaysFromNow(27));
+});
+
+test("backend adds IP (3) after active IP (2) sprint", async (t) => {
+   mongo = await MongoMemoryServer.create();
+   process.env.MONGO_URI = mongo.getUri();
+   process.env.VERCEL = "1";
+
+   app = require("../server");
+
+   t.after(async () => {
+      await closeConnections();
+   });
+
+   function isoDaysFromNow(offset) {
+      const d = new Date();
+      d.setUTCDate(d.getUTCDate() + offset);
+      return d.toISOString().slice(0, 10);
+   }
+
+   const created = await request(app).post("/api/sprints").send({
+      sprint: "43.IP (2)",
+      pi: 43,
+      start: isoDaysFromNow(-1),
+      end: isoDaysFromNow(12),
+   });
+   assert.equal(created.status, 201);
+
+   const create = await request(app).post("/api/sprints/create-new-sprint");
+   assert.equal(create.status, 201);
+   assert.equal(create.body.sprint.sprint, "43.IP (3)");
+   assert.equal(create.body.currentSprint, "43.IP (2)");
+   assert.equal(create.body.sprint.start.slice(0, 10), isoDaysFromNow(13));
 });
 
 test("backend adds numbered IP follow-up sprint after active IP sprint", async (t) => {

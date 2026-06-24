@@ -57,6 +57,24 @@ function computeNextSprintName(currentSprintName) {
   throw err;
 }
 
+async function resolveNextAvailableSprintName(currentSprintName, pi) {
+  const existingNames = new Set(
+    (await Sprint.find({ pi }, { sprint: 1 }).lean()).map((s) => normalizeSprintName(s.sprint))
+  );
+  let candidate = computeNextSprintName(currentSprintName);
+  let guard = 0;
+  while (existingNames.has(candidate)) {
+    guard += 1;
+    if (guard > 100) {
+      const err = new Error(`Unable to find available sprint name after "${currentSprintName}"`);
+      err.statusCode = 400;
+      throw err;
+    }
+    candidate = computeNextSprintName(candidate);
+  }
+  return candidate;
+}
+
 function toUtcDateKey(value) {
   return new Date(value).toISOString().slice(0, 10);
 }
@@ -84,7 +102,12 @@ async function getCurrentRunningSprint() {
     err.statusCode = 400;
     throw err;
   }
-  active.sort((a, b) => new Date(b.start) - new Date(a.start));
+  active.sort((a, b) => {
+    if (a.pi !== b.pi) return b.pi - a.pi;
+    const orderDiff = sprintOrderInPi(b.sprint) - sprintOrderInPi(a.sprint);
+    if (orderDiff !== 0) return orderDiff;
+    return new Date(b.start) - new Date(a.start);
+  });
   return active[0];
 }
 
@@ -124,6 +147,39 @@ async function reflowTrailingSprints(fromSprint, { excludeId = null } = {}) {
   }
 
   return trailing;
+}
+
+async function reflowScheduledSprintsAfter(fromSprint) {
+  const samePiTrailing = await Sprint.find({
+    pi: fromSprint.pi,
+    _id: { $ne: fromSprint._id },
+    start: { $gte: new Date(fromSprint.start) },
+  }).sort({ start: 1 });
+
+  let nextStart = addDays(new Date(fromSprint.end), 1);
+  for (const item of samePiTrailing) {
+    const duration = sprintDurationDays(item.start, item.end);
+    item.start = new Date(nextStart);
+    item.end = addDays(new Date(nextStart), duration - 1);
+    item.updatedAt = new Date();
+    // eslint-disable-next-line no-await-in-loop
+    await item.save();
+    nextStart = addDays(new Date(item.end), 1);
+  }
+
+  const higherPiTrailing = await Sprint.find({ pi: { $gt: fromSprint.pi } });
+  higherPiTrailing.sort(sortSprintsForReflow);
+  for (const item of higherPiTrailing) {
+    const duration = sprintDurationDays(item.start, item.end);
+    item.start = new Date(nextStart);
+    item.end = addDays(new Date(nextStart), duration - 1);
+    item.updatedAt = new Date();
+    // eslint-disable-next-line no-await-in-loop
+    await item.save();
+    nextStart = addDays(new Date(item.end), 1);
+  }
+
+  return [...samePiTrailing, ...higherPiTrailing];
 }
 
 async function listSprints(filters = {}) {
@@ -245,13 +301,7 @@ async function deleteSprint(id) {
 
 async function createNewSprintInExistingPi() {
   const current = await getCurrentRunningSprint();
-  const nextName = computeNextSprintName(current.sprint);
-  const existing = await Sprint.findOne({ sprint: nextName }).lean();
-  if (existing) {
-    const err = new Error(`Sprint "${nextName}" already exists`);
-    err.statusCode = 400;
-    throw err;
-  }
+  const nextName = await resolveNextAvailableSprintName(current.sprint, current.pi);
 
   const start = addDays(new Date(current.end), 1);
   const end = addDays(new Date(start), DEFAULT_SPRINT_DURATION_DAYS - 1);
@@ -262,7 +312,7 @@ async function createNewSprintInExistingPi() {
     end,
   });
 
-  const reflowed = await reflowTrailingSprints(newSprint);
+  const reflowed = await reflowScheduledSprintsAfter(newSprint);
   return {
     currentSprint: current.sprint,
     sprint: newSprint,
