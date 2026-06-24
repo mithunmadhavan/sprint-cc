@@ -129,7 +129,12 @@ async function deleteSprint(req, res) {
     if (!deleted) {
       return res.status(404).json({ error: "Sprint not found" });
     }
-    return res.json({ ok: true, message: "Sprint deleted" });
+    return res.json({
+      ok: true,
+      sprint: deleted.sprint,
+      submissionsDeleted: deleted.submissionsDeleted || 0,
+      message: `Sprint ${deleted.sprint} deleted (${deleted.submissionsDeleted || 0} submission(s) removed)`,
+    });
   } catch (e) {
     if (e.statusCode === 400) {
       return res.status(400).json({ error: e.message });
@@ -170,16 +175,41 @@ async function createNextPi(req, res) {
   }
 }
 
+async function listAddSprintOptions(req, res) {
+  try {
+    await connectDb(req.correlationId);
+    const options = await sprintService.listAddSprintOptions();
+    return res.json({ ok: true, options });
+  } catch (e) {
+    if (e.statusCode === 400) {
+      return res.status(400).json({ error: e.message });
+    }
+    logger.error("db-failure", {
+      correlationId: req.correlationId,
+      method: req.method,
+      path: req.path,
+      action: "list-add-sprint-options",
+      error: e,
+    });
+    return res.status(500).json({ error: "Failed to list add-sprint options" });
+  }
+}
+
 async function createNewSprintInExistingPi(req, res) {
   try {
     await connectDb(req.correlationId);
-    const result = await sprintService.createNewSprintInExistingPi();
+    const pi = req.body?.pi;
+    if (!pi) {
+      return res.status(400).json({ error: "PI is required" });
+    }
+    const result = await sprintService.createNewSprintInExistingPi(pi);
     return res.status(201).json({
       ok: true,
-      currentSprint: result.currentSprint,
+      pi: result.pi,
+      lastSprint: result.lastSprint,
       sprint: result.sprint,
       reflowedCount: result.reflowedCount,
-      message: `Created sprint ${result.sprint.sprint} after ${result.currentSprint} and reflowed ${result.reflowedCount} following sprint(s)`,
+      message: `Created sprint ${result.sprint.sprint} after ${result.lastSprint} in PI ${result.pi} and reflowed ${result.reflowedCount} following sprint(s)`,
     });
   } catch (e) {
     if (e.statusCode === 400) {
@@ -256,6 +286,7 @@ module.exports = {
   previewNextPi,
   createNextPi,
   createNewSprintInExistingPi,
+  listAddSprintOptions,
   deletePi,
 };
 

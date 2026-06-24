@@ -46,20 +46,7 @@
   </div>
 </div>
 
-<script>
-(function checkAuth() {
-  const user = JSON.parse(sessionStorage.getItem("sc_user") || "null");
-  if (!user || user.role !== "admin") {
-    alert("Admin access required");
-    window.location.href = "/";
-  }
-})();
-
-document.getElementById("signOutBtn").addEventListener("click", () => {
-  sessionStorage.removeItem("sc_user");
-  window.location.href = "/";
-});
-</script>
+<script src="/admin/script.js"></script>
 </body>
 </html>
 

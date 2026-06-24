@@ -1,303 +1,123 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sprint Roles Admin - Sprint Planner</title>
   <link rel="stylesheet" href="/admin-sprint-roles.css">
+  <script src="/admin/sprint-roles/script.js"></script>
 </head>
+
 <body>
-<div class="wrap">
-  <div class="userbar">
-    <div class="nav">
-      <a href="/" class="nav-link">Home</a>
-      <a href="/admin" class="nav-link">Admin</a>
+  <div class="wrap">
+    <div class="userbar">
+      <div class="nav">
+        <a href="/" class="nav-link">Home</a>
+        <a href="/admin" class="nav-link">Admin</a>
+      </div>
+      <div class="signout-wrap">
+        <a href="#" id="signOutBtn" class="nav-link signout-wrap">Sign out</a>
+      </div>
     </div>
-    <div class="signout-wrap">
-      <a href="#" id="signOutBtn" class="nav-link signout-wrap">Sign out</a>
-    </div>
-  </div>
 
-  <div class="head">
-    <div>
-      <h1>Sprint Roles Admin</h1>
-      <p class="sub">Manage planning roles, team vs non-team, and KPI capacity inclusion</p>
-    </div>
-    <div class="badge">ADMIN ONLY</div>
-  </div>
-
-  <div class="card">
-    <h2>Search & Filter</h2>
-    <div class="filter-row">
+    <div class="head">
       <div>
-        <label for="filterName">Role Name</label>
-        <input type="text" id="filterName" placeholder="e.g., Architect">
+        <h1>Sprint Roles Admin</h1>
+        <p class="sub">Manage planning roles, team vs non-team, and KPI capacity inclusion</p>
       </div>
-      <div>
-        <label for="filterType">Role Type</label>
-        <select id="filterType">
-          <option value="">All</option>
-          <option value="team">Team</option>
-          <option value="non-team">Non-Team</option>
-        </select>
-      </div>
-      <div>
-        <label for="filterCapacity">KPI Capacity</label>
-        <select id="filterCapacity">
-          <option value="">All</option>
-          <option value="included">Included</option>
-          <option value="excluded">Excluded</option>
-        </select>
-      </div>
+      <div class="badge">ADMIN ONLY</div>
     </div>
-    <div class="action-row">
-      <button class="btn btn-primary" id="filterBtn">🔍 Filter</button>
-      <button class="btn btn-secondary" id="clearFilterBtn">Clear</button>
-      <button class="btn btn-primary" id="addRoleBtn">+ Add Role</button>
-    </div>
-  </div>
 
-  <div class="status-msg" id="statusMsg"></div>
-
-  <div class="card">
-    <h2>Role Configuration</h2>
-    <div class="tbl-scroll">
-      <table>
-        <thead>
-          <tr>
-            <th>Role Name</th>
-            <th>Type</th>
-            <th>KPI Capacity</th>
-            <th>Behavior</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody id="rolesBody">
-          <tr><td colspan="5" class="center loading">Loading roles...</td></tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
-</div>
-
-<div class="modal" id="roleModal">
-  <div class="modal-content">
-    <div class="modal-header" id="modalTitle">Add Role</div>
-    <div class="status-msg" id="modalStatusMsg"></div>
-    <form id="roleForm">
-      <div class="form-group">
-        <label for="formName">Role Name *</label>
-        <input type="text" id="formName" required placeholder="e.g., Business Analyst">
-      </div>
-      <div class="form-group">
-        <label for="formRoleType">Role Type *</label>
-        <select id="formRoleType" required>
-          <option value="team">Team</option>
-          <option value="non-team">Non-Team</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>KPI Capacity</label>
-        <div class="checkbox-row">
-          <input type="checkbox" id="formIsCapacity" checked>
-          <div>
-            <div class="capacity-title">Include this role in Automated Capacity KPIs</div>
-            <div class="hint" id="capacityHint">Team roles are always included in KPI capacity.</div>
-          </div>
+    <div class="card">
+      <h2>Search & Filter</h2>
+      <div class="filter-row">
+        <div>
+          <label for="filterName">Role Name</label>
+          <input type="text" id="filterName" placeholder="e.g., Architect">
+        </div>
+        <div>
+          <label for="filterType">Role Type</label>
+          <select id="filterType">
+            <option value="">All</option>
+            <option value="team">Team</option>
+            <option value="non-team">Non-Team</option>
+          </select>
+        </div>
+        <div>
+          <label for="filterCapacity">KPI Capacity</label>
+          <select id="filterCapacity">
+            <option value="">All</option>
+            <option value="included">Included</option>
+            <option value="excluded">Excluded</option>
+          </select>
         </div>
       </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" id="cancelBtn">Cancel</button>
-        <button type="submit" class="btn btn-primary">Save</button>
+      <div class="action-row">
+        <button class="btn btn-primary" id="filterBtn">🔍 Filter</button>
+        <button class="btn btn-secondary" id="clearFilterBtn">Clear</button>
+        <button class="btn btn-primary" id="addRoleBtn">+ Add Role</button>
       </div>
-    </form>
+    </div>
+
+    <div class="status-msg" id="statusMsg"></div>
+
+    <div class="card">
+      <h2>Role Configuration</h2>
+      <div class="tbl-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Role Name</th>
+              <th>Type</th>
+              <th>KPI Capacity</th>
+              <th>Behavior</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="rolesBody">
+            <tr>
+              <td colspan="5" class="center loading">Loading roles...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
   </div>
-</div>
 
-<script>
-const API_BASE = window.location.protocol === "file:" ? "http://localhost:3000" : "";
-let roles = [];
-let currentEditId = null;
-let CURRENT_USER = null;
-
-function checkAuth() {
-  const user = JSON.parse(sessionStorage.getItem("sc_user") || "null");
-  if (!user || user.role !== "admin") {
-    alert("Admin access required");
-    window.location.href = "/";
-    return false;
-  }
-  CURRENT_USER = user;
-  return true;
-}
-
-function showStatus(msg, type) {
-  const el = document.getElementById("statusMsg");
-  el.textContent = msg;
-  el.className = `status-msg show ${type}`;
-  setTimeout(() => el.classList.remove("show"), 3000);
-}
-
-function setModalStatus(msg, type) {
-  const el = document.getElementById("modalStatusMsg");
-  if (!msg) {
-    el.textContent = "";
-    el.className = "status-msg";
-    return;
-  }
-  el.textContent = msg;
-  el.className = `status-msg show ${type}`;
-}
-
-function getCapacityBehavior(role) {
-  return role.isCapacity
-    ? "Member contributes to team size, total days, sprint capacity, and dev/test KPIs."
-    : "Member stays in roster but is excluded from Automated Capacity KPIs.";
-}
-
-function syncCapacityUi() {
-  const type = document.getElementById("formRoleType").value;
-  const checkbox = document.getElementById("formIsCapacity");
-  const hint = document.getElementById("capacityHint");
-  if (type === "team") {
-    checkbox.checked = true;
-    checkbox.disabled = true;
-    hint.textContent = "Team roles are always included in KPI capacity.";
-  } else {
-    checkbox.disabled = false;
-    hint.textContent = "For non-team roles, disable this to exclude the member from Automated Capacity KPIs.";
-  }
-}
-
-async function loadRoles() {
-  const tbody = document.getElementById("rolesBody");
-  tbody.innerHTML = '<tr><td colspan="5" class="center loading">Loading...</td></tr>';
-
-  try {
-    const params = new URLSearchParams({
-      name: document.getElementById("filterName").value,
-      roleType: document.getElementById("filterType").value,
-      capacity: document.getElementById("filterCapacity").value,
-    });
-
-    const resp = await fetch(`${API_BASE}/api/roles?${params}`, { cache: "no-store" });
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data.error || "Failed to load roles");
-
-    roles = data.roles || [];
-    if (roles.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="5" class="center table-empty">No roles found</td></tr>';
-      return;
-    }
-
-    tbody.innerHTML = roles.map((role) => `
-      <tr>
-        <td><strong>${role.name}</strong></td>
-        <td><span class="pill ${role.roleType}">${role.roleType === "team" ? "Team" : "Non-Team"}</span></td>
-        <td><span class="pill ${role.isCapacity ? "capacity-on" : "capacity-off"}">${role.isCapacity ? "Included" : "Excluded"}</span></td>
-        <td>${getCapacityBehavior(role)}</td>
-        <td class="actions-cell">
-          <button class="btn btn-small btn-secondary" onclick="editRole('${role._id}')">Edit</button>
-          <button class="btn btn-small btn-danger" onclick="deleteRole('${role._id}')">Delete</button>
-        </td>
-      </tr>
-    `).join("");
-  } catch (e) {
-    tbody.innerHTML = `<tr><td colspan="5" class="table-error">${e.message}</td></tr>`;
-  }
-}
-
-function openCreateModal() {
-  currentEditId = null;
-  document.getElementById("modalTitle").textContent = "Add Role";
-  document.getElementById("roleForm").reset();
-  document.getElementById("formRoleType").value = "team";
-  document.getElementById("formIsCapacity").checked = true;
-  syncCapacityUi();
-  setModalStatus("", "ok");
-  document.getElementById("roleModal").classList.add("show");
-}
-
-function editRole(id) {
-  const role = roles.find((item) => item._id === id);
-  if (!role) return;
-  currentEditId = id;
-  document.getElementById("modalTitle").textContent = `Edit Role: ${role.name}`;
-  document.getElementById("formName").value = role.name;
-  document.getElementById("formRoleType").value = role.roleType;
-  document.getElementById("formIsCapacity").checked = role.isCapacity;
-  syncCapacityUi();
-  setModalStatus("", "ok");
-  document.getElementById("roleModal").classList.add("show");
-}
-
-async function deleteRole(id) {
-  const role = roles.find((item) => item._id === id);
-  if (!role) return;
-  if (!window.confirm(`Delete role '${role.name}'?`)) return;
-
-  try {
-    const resp = await fetch(`${API_BASE}/api/roles/${id}`, { method: "DELETE" });
-    const json = await resp.json();
-    if (!resp.ok) throw new Error(json.error || "Delete failed");
-    showStatus("✓ Role deleted", "ok");
-    loadRoles();
-  } catch (e) {
-    showStatus(`✕ ${e.message}`, "err");
-  }
-}
-
-function closeModal() {
-  document.getElementById("roleModal").classList.remove("show");
-}
-
-document.getElementById("filterBtn").addEventListener("click", loadRoles);
-document.getElementById("clearFilterBtn").addEventListener("click", () => {
-  document.getElementById("filterName").value = "";
-  document.getElementById("filterType").value = "";
-  document.getElementById("filterCapacity").value = "";
-  loadRoles();
-});
-document.getElementById("addRoleBtn").addEventListener("click", openCreateModal);
-document.getElementById("cancelBtn").addEventListener("click", closeModal);
-document.getElementById("formRoleType").addEventListener("change", syncCapacityUi);
-document.getElementById("signOutBtn").addEventListener("click", () => {
-  sessionStorage.removeItem("sc_user");
-  window.location.href = "/";
-});
-
-document.getElementById("roleForm").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const payload = {
-    name: document.getElementById("formName").value.trim(),
-    roleType: document.getElementById("formRoleType").value,
-    isCapacity: document.getElementById("formIsCapacity").checked,
-  };
-
-  try {
-    const url = currentEditId ? `${API_BASE}/api/roles/${currentEditId}` : `${API_BASE}/api/roles`;
-    const method = currentEditId ? "PUT" : "POST";
-    const resp = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const json = await resp.json();
-    if (!resp.ok) throw new Error(json.error || "Save failed");
-
-    closeModal();
-    showStatus(currentEditId ? "✓ Role updated" : "✓ Role created", "ok");
-    loadRoles();
-  } catch (e2) {
-    setModalStatus(`✕ ${e2.message}`, "err");
-  }
-});
-
-if (checkAuth()) {
-  syncCapacityUi();
-  loadRoles();
-}
-</script>
+  <div class="modal" id="roleModal">
+    <div class="modal-content">
+      <div class="modal-header" id="modalTitle">Add Role</div>
+      <div class="status-msg" id="modalStatusMsg"></div>
+      <form id="roleForm">
+        <div class="form-group">
+          <label for="formName">Role Name *</label>
+          <input type="text" id="formName" required placeholder="e.g., Business Analyst">
+        </div>
+        <div class="form-group">
+          <label for="formRoleType">Role Type *</label>
+          <select id="formRoleType" required>
+            <option value="team">Team</option>
+            <option value="non-team">Non-Team</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>KPI Capacity</label>
+          <div class="checkbox-row">
+            <input type="checkbox" id="formIsCapacity" checked>
+            <div>
+              <div class="capacity-title">Include this role in Automated Capacity KPIs</div>
+              <div class="hint" id="capacityHint">Team roles are always included in KPI capacity.</div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="cancelBtn">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
 </body>
-</html>
 
+</html>

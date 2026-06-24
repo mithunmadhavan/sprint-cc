@@ -1,4 +1,5 @@
 const Sprint = require("../models/Sprint");
+const Submission = require("../models/Submission");
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_SPRINT_DURATION_DAYS = 14;
@@ -40,6 +41,10 @@ function sprintOrderInPi(sprintName) {
   return Number.MAX_SAFE_INTEGER;
 }
 
+function isIpSprintName(name) {
+  return /^\d+\.IP(?:\s*\(\d+\))?$/i.test(normalizeSprintName(name));
+}
+
 function computeNextSprintName(currentSprintName) {
   const name = normalizeSprintName(currentSprintName);
   const ipMatch = name.match(/^(\d+)\.IP(?:\s*\((\d+)\))?$/i);
@@ -55,6 +60,64 @@ function computeNextSprintName(currentSprintName) {
   const err = new Error(`Cannot derive next sprint name from "${name}"`);
   err.statusCode = 400;
   throw err;
+}
+
+async function piHasIpSprint(pi) {
+  const sprints = await Sprint.find({ pi }, { sprint: 1 }).lean();
+  return sprints.some((s) => isIpSprintName(s.sprint));
+}
+
+function pickLastSprintInPi(sprints = []) {
+  if (!sprints.length) return null;
+  return [...sprints].sort((a, b) => {
+    const orderDiff = sprintOrderInPi(b.sprint) - sprintOrderInPi(a.sprint);
+    if (orderDiff !== 0) return orderDiff;
+    return new Date(b.start) - new Date(a.start);
+  })[0];
+}
+
+async function getLastSprintInPi(pi) {
+  const sprints = await Sprint.find({ pi }).lean();
+  return pickLastSprintInPi(sprints);
+}
+
+async function getCurrentSprintInPi(pi) {
+  return getLastSprintInPi(pi);
+}
+
+async function getPreviousSprintInPi(sprint) {
+  const piSprints = await Sprint.find({ pi: sprint.pi }).lean();
+  const order = sprintOrderInPi(sprint.sprint);
+  return pickLastSprintInPi(
+    piSprints.filter(
+      (item) => String(item._id) !== String(sprint._id) && sprintOrderInPi(item.sprint) < order
+    )
+  );
+}
+
+async function listAddSprintOptions() {
+  const allSprints = await Sprint.find().lean();
+  const piNumbers = [...new Set(allSprints.map((s) => s.pi))].sort((a, b) => a - b);
+  const options = [];
+
+  for (const pi of piNumbers) {
+    const piSprints = allSprints.filter((s) => s.pi === pi);
+    const current = pickLastSprintInPi(piSprints);
+    if (!current || isIpSprintName(current.sprint)) continue;
+
+    const nextSprintName = await resolveNextAvailableSprintName(current.sprint, pi);
+    const nextStart = addDays(new Date(current.end), 1);
+    options.push({
+      pi,
+      currentSprint: current.sprint,
+      currentSprintEnd: current.end,
+      nextSprintName,
+      nextStart,
+      nextEnd: addDays(new Date(nextStart), DEFAULT_SPRINT_DURATION_DAYS - 1),
+    });
+  }
+
+  return options;
 }
 
 async function resolveNextAvailableSprintName(currentSprintName, pi) {
@@ -83,32 +146,10 @@ function isTodayOrPast(value) {
   return toUtcDateKey(value) <= toUtcDateKey(new Date());
 }
 
-function isActiveSprint(start, end, todayKey = toUtcDateKey(new Date())) {
-  return toUtcDateKey(start) <= todayKey && todayKey <= toUtcDateKey(end);
-}
-
 async function getPiStartSprint(pi) {
   const first = await Sprint.findOne({ pi, sprint: `${pi}.1` }).lean();
   if (first) return first;
   return Sprint.findOne({ pi }).sort({ start: 1 }).lean();
-}
-
-async function getCurrentRunningSprint() {
-  const todayKey = toUtcDateKey(new Date());
-  const sprints = await Sprint.find().lean();
-  const active = sprints.filter((s) => isActiveSprint(s.start, s.end, todayKey));
-  if (active.length === 0) {
-    const err = new Error("No active sprint found in calendar");
-    err.statusCode = 400;
-    throw err;
-  }
-  active.sort((a, b) => {
-    if (a.pi !== b.pi) return b.pi - a.pi;
-    const orderDiff = sprintOrderInPi(b.sprint) - sprintOrderInPi(a.sprint);
-    if (orderDiff !== 0) return orderDiff;
-    return new Date(b.start) - new Date(a.start);
-  });
-  return active[0];
 }
 
 function sortSprintsForReflow(a, b) {
@@ -255,8 +296,6 @@ async function updateSprint(id, data) {
   const hasStart = data.start !== undefined && data.start !== null && data.start !== "";
   const hasEnd = data.end !== undefined && data.end !== null && data.end !== "";
   const originalDuration = sprintDurationDays(sprint.start, sprint.end);
-  const currentPi = sprint.pi;
-  const currentOrder = sprintOrderInPi(sprint.sprint);
 
   if (data.sprint !== undefined && data.sprint !== null && data.sprint !== "") {
     sprint.sprint = normalizeSprintName(data.sprint);
@@ -285,36 +324,76 @@ async function deleteSprint(id) {
   const sprint = await Sprint.findById(id);
   if (!sprint) return null;
 
-  const piStartSprint = await getPiStartSprint(sprint.pi);
-  if (piStartSprint && isTodayOrPast(piStartSprint.start)) {
+  if (isIpSprintName(sprint.sprint)) {
+    const err = new Error(`Cannot delete sprint ${sprint.sprint}: IP sprints cannot be deleted`);
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const currentSprint = await getCurrentSprintInPi(sprint.pi);
+  if (currentSprint && isIpSprintName(currentSprint.sprint)) {
+    const err = new Error(`Cannot delete sprint ${sprint.sprint}: PI ${sprint.pi} is already in IP`);
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (isTodayOrPast(sprint.start)) {
     const err = new Error(
-      `Cannot delete sprint ${sprint.sprint}: PI ${sprint.pi} has already started`
+      `Cannot delete sprint ${sprint.sprint}: sprint has already started`
     );
     err.statusCode = 400;
     throw err;
   }
 
-  const err = new Error("Single sprint deletion is disabled. Delete the full PI instead.");
-  err.statusCode = 400;
-  throw err;
+  const submissionResult = await Submission.deleteMany({ SprintNo: sprint.sprint });
+
+  const deleted = sprint.toObject();
+  const previous = await getPreviousSprintInPi(sprint);
+  const pi = sprint.pi;
+  await Sprint.deleteOne({ _id: sprint._id });
+
+  if (previous) {
+    const anchor = await Sprint.findById(previous._id);
+    if (anchor) await reflowScheduledSprintsAfter(anchor);
+  } else if (pi > 1) {
+    const priorPiLast = await getLastSprintInPi(pi - 1);
+    if (priorPiLast) await reflowScheduledSprintsAfter(priorPiLast);
+  }
+
+  return { ...deleted, submissionsDeleted: submissionResult.deletedCount || 0 };
 }
 
-async function createNewSprintInExistingPi() {
-  const current = await getCurrentRunningSprint();
-  const nextName = await resolveNextAvailableSprintName(current.sprint, current.pi);
+async function createNewSprintInExistingPi(piNumber) {
+  const pi = toPiNumber(piNumber);
 
-  const start = addDays(new Date(current.end), 1);
+  const currentSprint = await getCurrentSprintInPi(pi);
+  if (!currentSprint) {
+    const err = new Error(`PI ${pi} has no sprints to extend`);
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (isIpSprintName(currentSprint.sprint)) {
+    const err = new Error("PI is already in IP no new sprint can be added");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const nextName = await resolveNextAvailableSprintName(currentSprint.sprint, pi);
+  const start = addDays(new Date(currentSprint.end), 1);
   const end = addDays(new Date(start), DEFAULT_SPRINT_DURATION_DAYS - 1);
   const newSprint = await createSprint({
     sprint: nextName,
-    pi: current.pi,
+    pi,
     start,
     end,
   });
 
   const reflowed = await reflowScheduledSprintsAfter(newSprint);
   return {
-    currentSprint: current.sprint,
+    pi,
+    currentSprint: currentSprint.sprint,
+    lastSprint: currentSprint.sprint,
     sprint: newSprint,
     reflowedCount: reflowed.length,
   };
@@ -431,5 +510,6 @@ module.exports = {
   previewNextPiBatch,
   createNextPiBatch,
   createNewSprintInExistingPi,
+  listAddSprintOptions,
   deletePiBatch,
 };

@@ -15,6 +15,7 @@ router.post("/submissions/upsert", submissionController.upsertSubmission);
 // Sprint calendar management
 router.get("/sprints", sprintController.listSprints);
 router.get("/sprints/next-pi-preview", sprintController.previewNextPi);
+router.get("/sprints/add-sprint-options", sprintController.listAddSprintOptions);
 router.post("/sprints/create-next-pi", sprintController.createNextPi);
 router.post("/sprints/create-new-sprint", sprintController.createNewSprintInExistingPi);
 router.delete("/sprints/pi/:piNumber", sprintController.deletePi);

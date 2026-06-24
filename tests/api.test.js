@@ -346,7 +346,7 @@ test("backend manages sprints with CRUD, numeric PI, and next-PI generation", as
 
    const singleDeleteBlocked = await request(app).delete(`/api/sprints/${editTarget._id}`);
    assert.equal(singleDeleteBlocked.status, 400);
-   assert.match(singleDeleteBlocked.body.error, /single sprint deletion is disabled/i);
+   assert.match(singleDeleteBlocked.body.error, /already in IP/i);
 
    const futureA = await request(app).post("/api/sprints").send({
       sprint: "210.1",
@@ -368,7 +368,7 @@ test("backend manages sprints with CRUD, numeric PI, and next-PI generation", as
    assert.match(blocked.body.error, /two PIs that have not started/i);
 });
 
-test("backend adds sprint after current running sprint and reflows following dates", async (t) => {
+test("backend adds sprint after current sprint in PI with numeric increment", async (t) => {
    mongo = await MongoMemoryServer.create();
    process.env.MONGO_URI = mongo.getUri();
    process.env.VERCEL = "1";
@@ -389,7 +389,6 @@ test("backend adds sprint after current running sprint and reflows following dat
       { sprint: "40.1", pi: 40, start: isoDaysFromNow(-30), end: isoDaysFromNow(-17) },
       { sprint: "40.2", pi: 40, start: isoDaysFromNow(-2), end: isoDaysFromNow(11) },
       { sprint: "40.4", pi: 40, start: isoDaysFromNow(12), end: isoDaysFromNow(25) },
-      { sprint: "40.IP", pi: 40, start: isoDaysFromNow(26), end: isoDaysFromNow(39) },
    ];
 
    for (const item of seed) {
@@ -397,27 +396,25 @@ test("backend adds sprint after current running sprint and reflows following dat
       assert.equal(created.status, 201);
    }
 
-   const create = await request(app).post("/api/sprints/create-new-sprint");
+   const create = await request(app).post("/api/sprints/create-new-sprint").send({ pi: 40 });
    assert.equal(create.status, 201);
-   assert.equal(create.body.sprint.sprint, "40.3");
-   assert.equal(create.body.currentSprint, "40.2");
-   assert.equal(create.body.reflowedCount, 2);
-   assert.equal(create.body.sprint.start.slice(0, 10), isoDaysFromNow(12));
-   assert.equal(create.body.sprint.end.slice(0, 10), isoDaysFromNow(25));
+   assert.equal(create.body.sprint.sprint, "40.5");
+   assert.equal(create.body.lastSprint, "40.4");
+   assert.equal(create.body.reflowedCount, 0);
+   assert.equal(create.body.sprint.start.slice(0, 10), isoDaysFromNow(26));
+   assert.equal(create.body.sprint.end.slice(0, 10), isoDaysFromNow(39));
 
    const after = await request(app).get("/api/sprints?pi=40");
    const sprint404 = after.body.sprints.find((s) => s.sprint === "40.4");
-   const sprint40IP = after.body.sprints.find((s) => s.sprint === "40.IP");
-   assert.equal(sprint404.start.slice(0, 10), isoDaysFromNow(26));
-   assert.equal(sprint40IP.start.slice(0, 10), isoDaysFromNow(40));
+   assert.equal(sprint404.start.slice(0, 10), isoDaysFromNow(12));
 
-   const secondCreate = await request(app).post("/api/sprints/create-new-sprint");
+   const secondCreate = await request(app).post("/api/sprints/create-new-sprint").send({ pi: 40 });
    assert.equal(secondCreate.status, 201);
-   assert.equal(secondCreate.body.sprint.sprint, "40.5");
-   assert.equal(secondCreate.body.currentSprint, "40.2");
+   assert.equal(secondCreate.body.sprint.sprint, "40.6");
+   assert.equal(secondCreate.body.lastSprint, "40.5");
 });
 
-test("backend skips to next available IP variant when follow-up sprint already exists", async (t) => {
+test("backend blocks add sprint when PI already has IP sprint", async (t) => {
    mongo = await MongoMemoryServer.create();
    process.env.MONGO_URI = mongo.getUri();
    process.env.VERCEL = "1";
@@ -452,19 +449,17 @@ test("backend skips to next available IP variant when follow-up sprint already e
       assert.equal(created.status, 201);
    }
 
-   const create = await request(app).post("/api/sprints/create-new-sprint");
-   assert.equal(create.status, 201);
-   assert.equal(create.body.sprint.sprint, "34.IP (3)");
-   assert.equal(create.body.currentSprint, "34.IP");
-   assert.equal(create.body.sprint.start.slice(0, 10), isoDaysFromNow(13));
-   assert.equal(create.body.reflowedCount, 1);
+   const create = await request(app).post("/api/sprints/create-new-sprint").send({ pi: 34 });
+   assert.equal(create.status, 400);
+   assert.match(create.body.error, /already in IP/i);
 
    const after = await request(app).get("/api/sprints?pi=34");
+   assert.equal(after.status, 200);
    const sprint34Ip2 = after.body.sprints.find((s) => s.sprint === "34.IP (2)");
-   assert.equal(sprint34Ip2.start.slice(0, 10), isoDaysFromNow(27));
+   assert.equal(sprint34Ip2.start.slice(0, 10), isoDaysFromNow(13));
 });
 
-test("backend adds IP (3) after active IP (2) sprint", async (t) => {
+test("backend blocks add sprint for PI ending on IP variant", async (t) => {
    mongo = await MongoMemoryServer.create();
    process.env.MONGO_URI = mongo.getUri();
    process.env.VERCEL = "1";
@@ -489,14 +484,12 @@ test("backend adds IP (3) after active IP (2) sprint", async (t) => {
    });
    assert.equal(created.status, 201);
 
-   const create = await request(app).post("/api/sprints/create-new-sprint");
-   assert.equal(create.status, 201);
-   assert.equal(create.body.sprint.sprint, "43.IP (3)");
-   assert.equal(create.body.currentSprint, "43.IP (2)");
-   assert.equal(create.body.sprint.start.slice(0, 10), isoDaysFromNow(13));
+   const create = await request(app).post("/api/sprints/create-new-sprint").send({ pi: 43 });
+   assert.equal(create.status, 400);
+   assert.match(create.body.error, /already in IP/i);
 });
 
-test("backend adds numbered IP follow-up sprint after active IP sprint", async (t) => {
+test("backend blocks add sprint for PI ending on base IP", async (t) => {
    mongo = await MongoMemoryServer.create();
    process.env.MONGO_URI = mongo.getUri();
    process.env.VERCEL = "1";
@@ -521,15 +514,12 @@ test("backend adds numbered IP follow-up sprint after active IP sprint", async (
    });
    assert.equal(created.status, 201);
 
-   const create = await request(app).post("/api/sprints/create-new-sprint");
-   assert.equal(create.status, 201);
-   assert.equal(create.body.sprint.sprint, "41.IP (2)");
-   assert.equal(create.body.currentSprint, "41.IP");
-   assert.equal(create.body.sprint.start.slice(0, 10), isoDaysFromNow(13));
-   assert.equal(create.body.sprint.end.slice(0, 10), isoDaysFromNow(26));
+   const create = await request(app).post("/api/sprints/create-new-sprint").send({ pi: 41 });
+   assert.equal(create.status, 400);
+   assert.match(create.body.error, /already in IP/i);
 });
 
-test("backend rejects add sprint when no active sprint exists", async (t) => {
+test("backend adds sprint for selected PI even if all sprints are future", async (t) => {
    mongo = await MongoMemoryServer.create();
    process.env.MONGO_URI = mongo.getUri();
    process.env.VERCEL = "1";
@@ -548,9 +538,9 @@ test("backend rejects add sprint when no active sprint exists", async (t) => {
    });
    assert.equal(created.status, 201);
 
-   const blocked = await request(app).post("/api/sprints/create-new-sprint");
-   assert.equal(blocked.status, 400);
-   assert.match(blocked.body.error, /no active sprint/i);
+   const createdSprint = await request(app).post("/api/sprints/create-new-sprint").send({ pi: 42 });
+   assert.equal(createdSprint.status, 201);
+   assert.equal(createdSprint.body.sprint.sprint, "42.2");
 });
 
 test("backend manages sprint roles with default seeding and capacity flags", async (t) => {
@@ -782,5 +772,88 @@ test("backend blocks sprint edit/delete and PI delete when PI starts today", asy
    const piDeleteBlocked = await request(app).delete("/api/sprints/pi/60");
    assert.equal(piDeleteBlocked.status, 400);
    assert.match(piDeleteBlocked.body.error, /already started/i);
+});
+
+test("backend deletes future sprint with submissions and enforces IP delete guards", async (t) => {
+   mongo = await MongoMemoryServer.create();
+   process.env.MONGO_URI = mongo.getUri();
+   process.env.VERCEL = "1";
+
+   app = require("../server");
+
+   t.after(async () => {
+      await closeConnections();
+   });
+
+   const now = new Date();
+   const dayMs = 24 * 60 * 60 * 1000;
+   const iso = (offset) => new Date(now.getTime() + offset * dayMs).toISOString().slice(0, 10);
+
+   const s701 = await request(app).post("/api/sprints").send({
+      sprint: "70.1",
+      pi: 70,
+      start: iso(10),
+      end: iso(23),
+   });
+   assert.equal(s701.status, 201);
+   const s702 = await request(app).post("/api/sprints").send({
+      sprint: "70.2",
+      pi: 70,
+      start: iso(24),
+      end: iso(37),
+   });
+   assert.equal(s702.status, 201);
+
+   const submission = await request(app).post("/api/submissions/upsert").send({
+      Team: "Team 70",
+      ProjectKey: "T70",
+      SprintNo: "70.2",
+      submittedDate: iso(0),
+      submittedBy: "Tester",
+      SprintGoal: "",
+      GoalsAchieved: "",
+      Objectives: ["Future objective"],
+      Notes: "future",
+      Roster: [],
+   });
+   assert.equal(submission.status, 200);
+
+   const deleted = await request(app).delete(`/api/sprints/${s702.body.sprint._id}`);
+   assert.equal(deleted.status, 200);
+   assert.equal(deleted.body.submissionsDeleted, 1);
+
+   const readDeletedSubmission = await request(app).get("/api/submissions/T70/70.2");
+   assert.equal(readDeletedSubmission.status, 200);
+   assert.equal(readDeletedSubmission.body.found, false);
+
+   const ipSprint = await request(app).post("/api/sprints").send({
+      sprint: "71.IP",
+      pi: 71,
+      start: iso(10),
+      end: iso(23),
+   });
+   assert.equal(ipSprint.status, 201);
+   const ipDeleteBlocked = await request(app).delete(`/api/sprints/${ipSprint.body.sprint._id}`);
+   assert.equal(ipDeleteBlocked.status, 400);
+   assert.match(ipDeleteBlocked.body.error, /IP sprints cannot be deleted/i);
+
+   const pi72s1 = await request(app).post("/api/sprints").send({
+      sprint: "72.1",
+      pi: 72,
+      start: iso(10),
+      end: iso(23),
+   });
+   assert.equal(pi72s1.status, 201);
+   const pi72ip = await request(app).post("/api/sprints").send({
+      sprint: "72.IP",
+      pi: 72,
+      start: iso(24),
+      end: iso(37),
+   });
+   assert.equal(pi72ip.status, 201);
+
+   const piIpDeleteBlocked = await request(app).delete(`/api/sprints/${pi72s1.body.sprint._id}`);
+   assert.equal(piIpDeleteBlocked.status, 400);
+   assert.match(piIpDeleteBlocked.body.error, /already in IP/i);
 });
 
