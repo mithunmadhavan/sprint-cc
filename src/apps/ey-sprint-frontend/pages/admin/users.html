@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Users Admin - Sprint Planner</title>
+  <link rel="stylesheet" href="/admin-users.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="userbar">
+    <div class="nav">
+      <a href="/" class="nav-link">Home</a>
+      <a href="/admin" class="nav-link">Admin</a>
+    </div>
+    <div class="signout-wrap">
+      <a href="#" id="signOutBtn" class="nav-link signout-wrap">Sign out</a>
+    </div>
+  </div>
+
+  <div class="head">
+    <div>
+      <h1>Users Admin</h1>
+      <p class="sub">Manage user roles, active status, and editor team access</p>
+    </div>
+    <div class="badge">ADMIN ONLY</div>
+  </div>
+
+  <div class="card">
+    <h2>Search &amp; Filter</h2>
+    <div class="filter-row">
+      <div>
+        <label for="filterSearch">Search</label>
+        <input type="text" id="filterSearch" placeholder="Name, username, or email">
+      </div>
+      <div>
+        <label for="filterRole">Role</label>
+        <select id="filterRole">
+          <option value="">All</option>
+          <option value="Admin">Admin</option>
+          <option value="Editor">Editor</option>
+          <option value="Viewer">Viewer</option>
+        </select>
+      </div>
+      <div>
+        <label for="filterStatus">Status</label>
+        <select id="filterStatus">
+          <option value="">All</option>
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+        </select>
+      </div>
+    </div>
+    <div class="action-row">
+      <button class="btn btn-primary" id="filterBtn">🔍 Filter</button>
+      <button class="btn btn-secondary" id="clearFilterBtn">Clear</button>
+    </div>
+  </div>
+
+  <div class="status-msg" id="statusMsg"></div>
+
+  <div class="card">
+    <h2>User Access</h2>
+    <div class="tbl-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>User</th>
+            <th>Email</th>
+            <th>Role</th>
+            <th>Status</th>
+            <th>Assigned Teams</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="usersBody">
+          <tr><td colspan="6" class="center loading">Loading users...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="userModal">
+  <div class="modal-content">
+    <div class="modal-header" id="modalTitle">Edit User</div>
+    <div class="status-msg" id="modalStatusMsg"></div>
+    <form id="userForm">
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="formName">Name</label>
+          <input type="text" id="formName" readonly>
+        </div>
+        <div class="form-group">
+          <label for="formUsername">Username</label>
+          <input type="text" id="formUsername" readonly>
+        </div>
+        <div class="form-group span-2">
+          <label for="formEmail">Email</label>
+          <input type="text" id="formEmail" readonly>
+        </div>
+        <div class="form-group">
+          <label for="formRole">Role</label>
+          <select id="formRole" required>
+            <option value="Admin">Admin</option>
+            <option value="Editor">Editor</option>
+            <option value="Viewer">Viewer</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Status</label>
+          <div class="checkbox-row">
+            <input type="checkbox" id="formIsActive" checked>
+            <div>Active user account</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Assigned Teams</label>
+        <div class="team-hint" id="assignedTeamsHint">Editor users can submit only for the selected teams.</div>
+        <div class="team-checkbox-grid" id="assignedTeamsGrid"></div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="cancelBtn">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="/admin/users/script.js"></script>
+</body>
+</html>
+

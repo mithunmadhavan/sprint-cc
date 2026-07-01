@@ -2,15 +2,30 @@
   "version": 2,
   "builds": [
     {
-      "src": "server.js",
+      "src": "api/**/*.js",
       "use": "@vercel/node"
+    },
+    {
+      "src": "src/apps/ey-sprint-frontend/server.js",
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": [
+          "src/apps/ey-sprint-frontend/pages/**",
+          "src/apps/ey-sprint-frontend/public/**"
+        ]
+      }
     }
   ],
   "routes": [
     {
+      "src": "/api/(.*)",
+      "dest": "/api/[...path].js",
+      "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+    },
+    {
       "src": "/(.*)",
-      "dest": "/server.js"
+      "dest": "/src/apps/ey-sprint-frontend/server.js",
+      "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     }
   ]
 }
-

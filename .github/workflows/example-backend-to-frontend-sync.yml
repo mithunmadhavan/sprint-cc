@@ -1,0 +1,19 @@
+name: Example Backend Deploy Then Frontend Sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      backend_url:
+        description: "Backend deploy URL output"
+        required: true
+        type: string
+
+jobs:
+  # This workflow demonstrates how to forward backend deploy output URL
+  # into the frontend Vercel deploy workflow so BACKEND_URL gets auto-updated.
+  deploy_frontend:
+    uses: ./.github/workflows/deploy-vercel.yml
+    with:
+      backend_url: ${{ inputs.backend_url }}
+    secrets: inherit
+

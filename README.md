@@ -1,114 +1,149 @@
 # Sprint Planner
 
-This project now uses a **separate backend service** for persistence:
+This repository now runs exclusively with microservices under `src/apps`.
 
-- Frontend: `index.html` (UI design unchanged)
-- Backend: root-level Node.js service (Express + MongoDB)
+## Architecture
 
-## 1) Local setup (first roadmap step)
+- `src/apps/ey-sprint-business-services` - NestJS backend API
+- `src/apps/ey-sprint-frontend` - frontend static service
 
-### Backend
+Legacy root runtime files were removed as part of migration.
 
-1. Copy env template:
+## Local Development
 
-```bash
-cp .env.example .env
-```
-
-2. Update `.env` with your Mongo URI.
-3. Install deps and run backend:
+Install dependencies:
 
 ```bash
-npm install
-npm start
+npm --prefix src/apps/ey-sprint-business-services install
+npm --prefix src/apps/ey-sprint-frontend install
 ```
 
-Backend runs on `http://localhost:3000` by default.
-
-### Frontend
-
-Open `index.html` in your browser. It calls the backend API at `http://localhost:3000`.
-
-When deployed, `index.html` calls same-origin APIs (`/api/*`) automatically.
-
-## 2) API endpoints
-
-- Route behavior:
-  - `/` serves `index.html`
-  - `/api/*` serves backend APIs
-
-- `GET /api/health`
-- `GET /api/submissions`
-- `GET /api/submissions/:teamKey/:sprintNo`
-- `POST /api/submissions/upsert`
-- `GET /api/sprints`
-- `GET /api/sprints/:id`
-- `POST /api/sprints`
-- `PUT /api/sprints/:id`
-- `DELETE /api/sprints/:id`
-- `GET /api/sprints/next-pi-preview` (visualization only, no DB write)
-- `POST /api/sprints/create-next-pi` (creates next PI with `*.1..*.5` and `*.IP`)
-- `POST /api/sprints/create-new-sprint` (adds next sprint after the current running sprint in its PI and reflows following dates)
-- `GET /api/roles`
-- `GET /api/roles/:id`
-- `POST /api/roles`
-- `PUT /api/roles/:id`
-- `DELETE /api/roles/:id`
-
-Sprint rules:
-- `pi` is numeric in DB.
-- Admin button **Create New PI** creates 6 records for the next PI.
-- Admin UI previews records first; create call recalculates on server before save.
-- New PI starts on next day after latest PI's `*.IP` end date.
-- Creation is blocked when 2 future (not started) PIs already exist.
-
-Role rules:
-- Planning roles are loaded dynamically from `/api/roles` instead of hardcoded frontend constants.
-- Admin dashboard is available at `/admin/sprint-roles`.
-- Non-team roles can set `isCapacity=false`; those roster members are excluded from Automated Capacity KPIs (`Team Size`, `Total Days`, `Sprint Capacity`, and dev/test split).
-
-## 3) Backend layering and logs
-
-- `server.js`: runtime bootstrap
-- `src/app.js`: express app setup
-- `src/routes/apiRoutes.js`: route registration
-- `src/controllers/submissionController.js`: controller handlers
-- `src/services/submissionService.js`: service/data logic
-- `src/utils/*`: shared logger and helpers
-- `src/middleware/requestLogger.js`: logs every API call
-- `src/middleware/correlationId.js`: assigns or propagates correlation IDs
-
-API logs are JSON lines and include `correlationId`, method, path, status, and duration.
-Responses include `X-Correlation-Id`, and clients can pass `x-correlation-id`.
-
-## 5) GitHub Actions + Vercel deployment
-
-Workflow: `.github/workflows/deploy-vercel.yml`
-
-Behavior:
-- Runs on push to `development`, `staging`, `production`
-- Uses branch name as GitHub Environment (`environment: ${{ github.ref_name }}`)
-- Creates backend `.env` during CI with:
-  - `PORT=3000`
-  - `MONGO_URI` from GitHub Environment Variable (`vars.MONGO_URI`) or fallback secret (`secrets.MONGO_URI`)
-- Deploys backend from repository root to Vercel
-
-## 5) Secrets to add in GitHub
-
-Add these in each GitHub Environment (for example `development`, `staging`, `production`):
-
-- Variable: `MONGO_URI` (or use secret `MONGO_URI`)
-- Secret: `VERCEL_TOKEN`
-- Secret: `VERCEL_ORG_ID`
-- Secret: `VERCEL_PROJECT_ID`
-
-## 7) Optional test run
+Run backend:
 
 ```bash
-npm test
+npm run dev:backend:new
 ```
 
-This runs an API smoke test using an in-memory MongoDB instance.
+Run frontend (new terminal):
 
+```bash
+npm run dev:frontend:new
+```
 
+Default URLs:
 
+- Backend API (local dev direct): `http://localhost:3000/api`
+- Frontend (local dev): `http://localhost:3001`
+
+## Testing
+
+Unit tests:
+
+```bash
+npm run test
+```
+
+E2E tests:
+
+```bash
+npm run test:e2e:new
+```
+
+## Docker
+
+Start stack:
+
+```bash
+npm run docker:up
+```
+
+Tail logs:
+
+```bash
+npm run docker:logs
+```
+
+Stop stack:
+
+```bash
+npm run docker:down
+```
+
+Docker service URLs (single exposed port via NGINX gateway):
+
+- Frontend: `http://localhost:3000`
+- API health: `http://localhost:3000/api/health`
+- MongoDB host access: `mongodb://localhost:27018`
+
+Gateway routing:
+
+- `/` -> frontend service (`ey-sprint-frontend:3001`)
+- `/api/*` -> backend service (`ey-sprint-business-services:3000`)
+
+Note: in Docker, backend listens on container port `3000` internally and is reached through the frontend proxy (`/api`) instead of direct host exposure.
+
+## Auth Defaults (for local/test bootstrap)
+
+- Email: `mithunpramilak@etihad.ae`
+- Password: `Admin@1234`
+
+## Environment Variables
+
+Backend (`src/apps/ey-sprint-business-services`) uses:
+
+- `MONGO_URI`
+- `JWT_SECRET`
+- `JWT_EXPIRES_IN` (default `12h`)
+- `AUTH_STRICT_MODE` (default `true`)
+
+## Makefile Shortcuts
+
+```bash
+make help
+make test
+make test-e2e
+make docker-up
+make docker-ps
+make ports
+make health
+make docker-down
+```
+
+## Vercel + GitHub Actions Deployment
+
+Frontend deployment is configured via:
+
+- `vercel.json` (entry: `src/apps/ey-sprint-frontend/server.js`)
+- `.github/workflows/deploy-vercel.yml`
+
+Workflow behavior:
+
+- Triggers on `development`, `staging`, `stage`, `production`
+- Builds/deploys Vercel project selected by `VERCEL_PROJECT_ID`
+- Syncs `BACKEND_URL` into Vercel env before build/deploy
+- Accepts optional `backend_url` input (workflow_dispatch/workflow_call)
+
+`BACKEND_URL` source precedence:
+
+1. `backend_url` workflow input (recommended from backend deploy output)
+2. `BACKEND_URL` GitHub secret/variable
+
+Required GitHub Environment secrets/variables:
+
+- `VERCEL_TOKEN`
+- `VERCEL_ORG_ID`
+- `VERCEL_PROJECT_ID`
+- `BACKEND_URL` (fallback if no backend_url input is provided)
+
+To auto-update from backend deploy output, call the frontend workflow as reusable and pass the backend URL output:
+
+```yaml
+jobs:
+  deploy_frontend:
+    uses: ./.github/workflows/deploy-vercel.yml
+    with:
+      backend_url: ${{ needs.deploy_backend.outputs.backend_url }}
+    secrets: inherit
+```
+
+Reference example: `.github/workflows/example-backend-to-frontend-sync.yml`

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Dashboard - Sprint Planner</title>
+  <link rel="stylesheet" href="/admin-index.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="userbar">
+    <div class="nav">
+      <a href="/" class="nav-link">Home</a>
+    </div>
+    <div class="signout-wrap">
+      <a href="#" id="signOutBtn" class="nav-link signout-wrap">Sign out</a>
+    </div>
+  </div>
+
+  <div class="head">
+    <div>
+      <h1>Admin Dashboard</h1>
+      <p class="sub">Manage configuration</p>
+    </div>
+    <div class="badge">ADMIN ONLY</div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Sprint Calendar</h2>
+      <p>Create PI batches, review sprint schedule, and manage PI-level deletion rules.</p>
+      <a class="go-link" href="/admin/sprint-calendar">Open Sprint Calendar →</a>
+    </div>
+
+    <div class="card">
+      <h2>Sprint Roles</h2>
+      <p>Manage team/non-team roles and control KPI capacity inclusion behavior.</p>
+      <a class="go-link" href="/admin/sprint-roles">Open Sprint Roles →</a>
+    </div>
+
+    <div class="card">
+      <h2>Sprint Teams</h2>
+      <p>Manage active teams that appear in the main app Team dropdown.</p>
+      <a class="go-link" href="/admin/sprint-teams">Open Sprint Teams →</a>
+    </div>
+
+    <div class="card">
+      <h2>Users</h2>
+      <p>Manage user roles, team assignments for editors, and account activation status.</p>
+      <a class="go-link" href="/admin/users">Open Users →</a>
+    </div>
+  </div>
+</div>
+
+<script src="/admin/script.js"></script>
+</body>
+</html>
+

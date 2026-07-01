@@ -1,0 +1,41 @@
+services:
+
+  ey-sprint-business-services:
+    build:
+      context: .
+      dockerfile: src/apps/ey-sprint-business-services/Dockerfile
+    container_name: ey-sprint-business-services
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      MONGO_URI: mongodb://root:password123@host.docker.internal:27017/sprint_cc?authSource=admin
+      JWT_SECRET: change-this-in-production
+      JWT_EXPIRES_IN: 12h
+      AUTH_STRICT_MODE: "true"
+
+  ey-sprint-frontend:
+    build:
+      context: .
+      dockerfile: src/apps/ey-sprint-frontend/Dockerfile
+    container_name: ey-sprint-frontend
+    restart: unless-stopped
+    environment:
+      BACKEND_URL: http://ey-sprint-business-services:3000
+    depends_on:
+      - ey-sprint-business-services
+
+  ey-sprint-gateway:
+    image: nginx:alpine
+    container_name: ey-sprint-gateway
+    restart: unless-stopped
+    depends_on:
+      - ey-sprint-business-services
+      - ey-sprint-frontend
+    volumes:
+      - ./src/apps/ey-sprint-gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "3000:80"
+
+volumes:
+  mongo_data:

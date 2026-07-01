@@ -1,12 +1,11 @@
-name: Deploy Backend to Vercel
+name: Deploy Frontend to Vercel
 
 on:
   push:
     branches:
-      - development
-      - staging
-      - production
+      - '**'
   workflow_dispatch:
+  workflow_call:
 
 jobs:
   deploy:
@@ -28,12 +27,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
-          cache-dependency-path: package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
 
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
@@ -41,69 +34,46 @@ jobs:
       - name: Validate Vercel credentials
         run: |
           if [ -z "$VERCEL_TOKEN" ]; then
-            echo "Missing VERCEL_TOKEN in environment secret/variable for branch: ${GITHUB_REF_NAME}" >&2
+            echo "Missing VERCEL_TOKEN in environment secret/variable for environment: ${GITHUB_REF_NAME}" >&2
             exit 1
           fi
+
           if [ -z "$VERCEL_ORG_ID" ]; then
-            echo "Missing VERCEL_ORG_ID in environment secret/variable for branch: ${GITHUB_REF_NAME}" >&2
+            echo "Missing VERCEL_ORG_ID in environment secret/variable for environment: ${GITHUB_REF_NAME}" >&2
             exit 1
           fi
+
           if [ -z "$VERCEL_PROJECT_ID" ]; then
-            echo "Missing VERCEL_PROJECT_ID in environment secret/variable for branch: ${GITHUB_REF_NAME}" >&2
+            echo "Missing VERCEL_PROJECT_ID in environment secret/variable for environment: ${GITHUB_REF_NAME}" >&2
             exit 1
           fi
 
-      - name: Generate .env from GitHub Environment
+      - name: Sync BACKEND_URL to Vercel Environment
         env:
-          MONGO_URI: ${{ secrets.MONGO_URI != '' && secrets.MONGO_URI || vars.MONGO_URI }}
+          BACKEND_URL: ${{ secrets.BACKEND_URL != '' && secrets.BACKEND_URL || vars.BACKEND_URL }}
         run: |
-          printf 'PORT=3000\nMONGO_URI=%s\n' "$MONGO_URI" > .env
+          if [ -z "$BACKEND_URL" ]; then
+            echo "BACKEND_URL not configured. Skipping Vercel environment sync."
+            exit 0
+          fi
 
-      - name: Set MONGO_URI as Vercel environment variable
-        env:
-          MONGO_URI: ${{ secrets.MONGO_URI != '' && secrets.MONGO_URI || vars.MONGO_URI }}
-        run: |
-          if [ -z "$MONGO_URI" ]; then
-            echo "MONGO_URI is empty — aborting" >&2
-            exit 1
-          fi
-          if [ "${GITHUB_REF_NAME}" = "production" ] || [ "${GITHUB_REF_NAME}" = "development" ]; then
-            TARGET_ENV="production"
-          else
-            TARGET_ENV="preview"
-          fi
-          # Remove existing value silently (ignore failure if not yet set)
-          vercel env rm MONGO_URI "$TARGET_ENV" --yes --token="$VERCEL_TOKEN" 2>/dev/null || true
-          # Add updated value — env add reads value from stdin
-          echo "$MONGO_URI" | vercel env add MONGO_URI "$TARGET_ENV" --token="$VERCEL_TOKEN"
-          # Verify it was registered
-          vercel env ls --token="$VERCEL_TOKEN" | grep -q "MONGO_URI" && echo "✓ MONGO_URI confirmed in Vercel env store" || { echo "ERROR: MONGO_URI not found after add" >&2; exit 1; }
+          TARGET_ENV="production"
+
+          vercel env rm BACKEND_URL "$TARGET_ENV" --yes --token="$VERCEL_TOKEN" 2>/dev/null || true
+          echo "$BACKEND_URL" | vercel env add BACKEND_URL "$TARGET_ENV" --token="$VERCEL_TOKEN"
 
       - name: Pull Vercel project settings
         run: |
-          if [ "${GITHUB_REF_NAME}" = "production" ] || [ "${GITHUB_REF_NAME}" = "development" ]; then
-            TARGET_ENV="production"
-          else
-            TARGET_ENV="preview"
-          fi
-          vercel pull --yes --environment="$TARGET_ENV" --token="$VERCEL_TOKEN"
+          vercel pull \
+            --yes \
+            --environment="production" \
+            --token="$VERCEL_TOKEN"
 
       - name: Build
         run: |
-          if [ "${GITHUB_REF_NAME}" = "production" ] || [ "${GITHUB_REF_NAME}" = "development" ]; then
-            vercel build --prod --token="$VERCEL_TOKEN"
-          else
-            vercel build --token="$VERCEL_TOKEN"
-          fi
+          vercel build --prod --token="$VERCEL_TOKEN"
 
       - name: Deploy
         run: |
-          if [ "${GITHUB_REF_NAME}" = "production" ] || [ "${GITHUB_REF_NAME}" = "development" ]; then
-            DEPLOY_URL=$(vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN")
-          else
-            DEPLOY_URL=$(vercel deploy --prebuilt --token="$VERCEL_TOKEN")
-          fi
+          DEPLOY_URL=$(vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN")
           echo "Deployed URL: $DEPLOY_URL"
-
-
-

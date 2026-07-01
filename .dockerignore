@@ -1,0 +1,32 @@
+# VCS
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+
+# OS
+.DS_Store
+
+# Build/deps
+**/node_modules
+**/dist
+**/coverage
+
+# Logs
+**/*.log
+npm-debug.log*
+
+# Temp and archives
+__MACOSX
+*.zip
+
+# Docs not required for runtime images
+*.md
+
+# Environment files (keep example only)
+.env
+**/.env
+!.env.example
+
